@@ -56,7 +56,6 @@ Each event carries `e.robot_id`. Common events and their extra fields:
 | Event | Fields | Fires when |
 | --- | --- | --- |
 | `spawn` | — | a robot enters the world (or your code reloads). Entry point. |
-| `tick` | `tick_no` | every simulation step (throttle it — see the starter). |
 | `arrived` | `position` | a `move_to` reached its target. |
 | `blocked` | `reason` | a move/action couldn't complete. |
 | `scan_result` | `cells` | a `scan` finished; `cells` lists revealed tiles/spots. |
@@ -108,5 +107,8 @@ the robot's current cell (a robot can also drop into a Base/Storage on an **adja
   (it needs both to produce robots), reduce robots blocking each other near the Base, build
   **Storage** as a buffer and **Roads** for speed, and call `buildings.base.build_robot(...)`
   aggressively once resources allow.
-- Keep handlers small and the `tick` reconciler authoritative — it's the most robust pattern
-  (a robot that ends up idle always gets a next job).
+- **The game is purely event-driven — do NOT use an `on.tick` polling loop.** The golden
+  rule: **every handler must issue the robot's next command** (move/mine/build/haul/scan), so
+  a robot is never left idle with no future event to wake it. If a code path would leave a
+  robot with nothing to do, make it `scan` or move instead. That single discipline is what
+  keeps the city growing without any polling.
