@@ -28,7 +28,7 @@ live page.
 Goal of the reference module: **grow the city**. The loop the starter implements:
 
 ```
-scout (reveal the map) → build a Mining building on a resource spot → mine ore/metal
+explore by moving (reveal the map) → build a Mining building on a resource spot → mine ore/metal
   → haul it to the Base → the Base produces more robots → more robots → faster growth
 ```
 
@@ -59,7 +59,6 @@ Each event carries `e.robot_id`. Common events and their extra fields:
 | `spawn` | — | a robot enters the world (or your code reloads). |
 | `arrived` | `position` | a `move_to` reached its target. |
 | `blocked` | `reason` | a move/action couldn't complete. |
-| `scan_result` | `cells` | a `scan` finished; `cells` lists revealed tiles/spots. |
 | `construction_complete` | `building_id`, `type` | a platform finished (now active). |
 | `mining_complete` | `resource`, `amount` | a `mine` produced into the mine's store. |
 | `spot_depleted` | `building_id` | the resource spot a robot was mining ran out. |
@@ -70,12 +69,14 @@ Each event carries `e.robot_id`. Common events and their extra fields:
 The cleanest controller is built around **`idle`**: it fires exactly when a robot is free,
 so you don't poll and you don't have to chain every completion event by hand. The starter is
 essentially one `@on.idle` handler that reads the robot's live state and issues its next move.
-The other events are there when you want their payload (e.g. `scan_result.cells`).
+The other events are there when you want their payload (e.g. `arrived.position`). Discovery
+happens **by moving** — a robot reveals a radius (~5) around itself as it moves; to explore,
+just `move_to` a cell in the fog. There is no scan command.
 
 `subscribe(event, handler, once=False)` / `unsubscribe(...)` register at runtime too.
 
 ### Command robots — `r = robots[id]`
-`r.move_to(x, y)` · `r.step(dir)` · `r.scan(radius=…)` · `r.start_construction("mining"|"storage"|"road")`
+`r.move_to(x, y)` · `r.step(dir)` · `r.start_construction("mining"|"storage"|"road")`
 · `r.connect()` · `r.mine()` · `r.pick_up(ore=…, metal=…)` *(no args = all)* · `r.drop(ore=…, metal=…)`
 *(no args = all)* · `r.send(target_id, payload)` · `r.cancel()` · `r.log("…")`.
 
@@ -116,7 +117,8 @@ the robot's current cell (a robot can also drop into a Base/Storage on an **adja
   aggressively once resources allow.
 - **The game is purely event-driven — do NOT use an `on.tick` polling loop.** Build around
   **`on.idle`**: it fires precisely when a robot needs a command. The golden rule: **every
-  handler must issue the robot's next command** (move/mine/build/haul/scan), so a robot is
-  never left idle with no future event to wake it. If a code path would leave a
-  robot with nothing to do, make it `scan` or move instead. That single discipline is what
-  keeps the city growing without any polling.
+  handler must issue the robot's next command** (move/mine/build/haul), so a robot is
+  never left idle with no future event to wake it. (And since `idle` re-fires while a robot
+  stays free, a robot is never permanently stuck.) If a code path would leave a robot with
+  nothing to do, move it into unexplored ground instead — moving reveals new map. That single
+  discipline is what keeps the city growing without any polling.

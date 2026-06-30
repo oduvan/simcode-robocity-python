@@ -16,16 +16,41 @@ keep robots from bunching at the Base. See CLAUDE.md for the full SDK + rules.
 
 from simcode import buildings, on, robots
 
-HOME: dict = {}   # robot id -> (x, y) of the mine it works (process state)
+HOME: dict = {}     # robot id -> (x, y) of the mine it works (process state)
+EXPLORE: dict = {}  # robot id -> step counter, so exploration changes direction
 
 MINE_ORE, MINE_METAL = 6, 3   # Mining recipe (the kit a robot drops to build one)
 HAUL_AT = 6                   # haul once the robot's mine holds at least this much
 DIRS = ((0, -1), (0, 1), (-1, 0), (1, 0))
+# Eight directions to fan out while exploring (the map reveals as you move).
+EXPLORE_DIRS = ((1, 0), (0, 1), (-1, 0), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1))
 
 
 def _num(rid: str) -> int:
     d = "".join(ch for ch in rid if ch.isdigit())
     return int(d) if d else 0
+
+
+def _explore(r):
+    """Move into unexplored ground to discover resource spots — there's no scan
+    command; the map is revealed by moving. Each call heads a few cells in a
+    rotating direction (varied by robot id) so the fleet fans out and uncovers
+    new territory instead of retracing the same path."""
+    from simcode import world
+
+    w, h = world.size
+    step = EXPLORE.get(r.id, 0)
+    EXPLORE[r.id] = step + 1
+    dx, dy = EXPLORE_DIRS[(_num(r.id) + step) % len(EXPLORE_DIRS)]
+    x, y = r.position
+    tx = min(max(x + dx * 5, 0), w - 1)
+    ty = min(max(y + dy * 5, 0), h - 1)
+    if (tx, ty) == (x, y):                 # at an edge — head back toward the Base
+        b = buildings.base
+        bx, by = b.position if b and b.position else (w // 2, h // 2)
+        tx = min(max(x + (1 if bx > x else -1) * 5, 0), w - 1)
+        ty = min(max(y + (1 if by > y else -1) * 5, 0), h - 1)
+    r.move_to(tx, ty)
 
 
 def _build(r):
@@ -109,10 +134,10 @@ def on_idle(e):
     home = HOME.get(r.id)
 
     if buildings.base is None or buildings.base.position is None:
-        r.scan(radius=8)
+        _explore(r)
         return
 
-    # No mine yet: spend the starter kit to build one (scan first if no spot known).
+    # No mine yet: spend the starter kit to build one (explore to find a spot).
     # NB: the kit (6 ore/3 metal) is inventory but is for BUILDING, not hauling.
     if home is None:
         if inv.ore >= MINE_ORE and inv.metal >= MINE_METAL:
@@ -121,9 +146,9 @@ def on_idle(e):
                 HOME[r.id] = spot
                 _build(r) if r.position == spot else r.move_to(*spot)
             else:
-                r.scan(radius=8)
+                _explore(r)
         else:
-            r.scan(radius=8)            # no kit, no mine -> scout
+            _explore(r)            # no kit, no mine -> scout
         return
 
     built = _mine_active(home)
@@ -145,7 +170,7 @@ def on_idle(e):
             _build(r)
         else:
             HOME.pop(r.id, None)
-            r.scan(radius=8)
+            _explore(r)
         return
     # Our mine is active.
     if inv.ore + inv.metal > 0:
@@ -158,6 +183,6 @@ def on_idle(e):
 
 @on.spot_depleted
 def on_spot_depleted(e):
-    """Our mine ran dry — abandon it; `idle` will fire and we'll scout again."""
+    """Our mine ran dry — abandon it; `idle` will fire and we'll explore again."""
     HOME.pop(e.robot_id, None)
-    robots[e.robot_id].scan(radius=8)
+    _explore(robots[e.robot_id])
