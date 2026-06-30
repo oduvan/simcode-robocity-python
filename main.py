@@ -1,28 +1,26 @@
 """Robot City Builder — starter controller (Python).
 
-One script drives your whole fleet by id. The game is **event-driven**: every
-command a robot runs finishes with an event (arrived, mining_complete,
-construction_complete, blocked, ...), and you react by issuing the next command.
-There is no polling — the golden rule is simply: **every handler must give the
-robot its next command**, so a robot is never left idle with nothing to wake it.
+One script drives your whole fleet by id. The game is **event-driven**: whenever
+a robot is free it fires `idle`, and you give it its next command. Because `idle`
+fires exactly when (and only when) a robot needs direction, the whole controller
+is essentially one handler — no polling, no chaining every completion by hand.
 
-The growth loop, per robot:
-  scout -> walk to a free resource spot -> build a Mining building (drop the kit,
-  connect) -> mine -> haul a load to the Base -> go back and mine again. When the
-  Base has enough ore+metal it produces a new robot, which does the same.
+The growth loop, per robot, all decided in `on_idle` from the robot's live state:
+  no mine + has the starter kit -> claim a free spot, walk there, build a Mining
+  building -> mine -> once it holds a load, haul to the Base -> go back and mine.
+  When the Base has enough ore+metal it builds a new robot, which does the same.
 
 It's a solid base — improve it! Ideas: build Storage/Roads, balance ore vs metal,
-reduce robots bunching at the Base. See CLAUDE.md for the full SDK + rules.
+keep robots from bunching at the Base. See CLAUDE.md for the full SDK + rules.
 """
 
 from simcode import buildings, on, robots
 
-# Per-robot memory (persists while the city runs; resets on a fresh deploy).
-HOME: dict = {}   # robot id -> (x, y) of the mine it works
-GOAL: dict = {}   # robot id -> what its current move is for: spot|base|mine|explore
+HOME: dict = {}   # robot id -> (x, y) of the mine it works (process state)
 
 MINE_ORE, MINE_METAL = 6, 3   # Mining recipe (the kit a robot drops to build one)
 HAUL_AT = 6                   # haul once the robot's mine holds at least this much
+DIRS = ((0, -1), (0, 1), (-1, 0), (1, 0))
 
 
 def _num(rid: str) -> int:
@@ -30,51 +28,49 @@ def _num(rid: str) -> int:
     return int(d) if d else 0
 
 
-def _base():
-    b = buildings.base
-    return b if (b and b.position) else None
-
-
-def _go_base(r):
-    """Head for a free cell next to the Base (you can drop in from an adjacent
-    cell), so haulers don't all fight for its single cell."""
-    b = _base()
-    if b is None:
-        return
-    bx, by = b.position
-    GOAL[r.id] = "base"
-    p = r.position
-    if abs(p[0] - bx) + abs(p[1] - by) <= 1:
-        r.drop()            # already adjacent/on it
-        _maybe_build_robot()
-        _send_home(r)
-        return
-    occ = {x.position for x in robots.all() if x.id != r.id}
-    cands = sorted(
-        (abs(p[0] - (bx + dx)) + abs(p[1] - (by + dy)), (bx + dx, by + dy))
-        for dx, dy in ((0, -1), (0, 1), (-1, 0), (1, 0))
-        if (bx + dx, by + dy) not in occ
-    )
-    r.move_to(*(cands[0][1] if cands else (bx, by)))
-
-
-def _send_home(r):
-    if r.id in HOME:
-        GOAL[r.id] = "mine"
-        r.move_to(*HOME[r.id])
-    else:
-        GOAL[r.id] = "explore"
-        r.scan(radius=8)
+def _build(r):
+    """Build a Mining building on the robot's current cell."""
+    r.start_construction("mining")
+    r.drop(MINE_ORE, MINE_METAL)   # supply the recipe
+    r.connect()                    # then help build it
 
 
 def _maybe_build_robot():
-    b = _base()
+    """Grow: have the Base produce a robot when it can afford one (one at a time)."""
+    b = buildings.base
     if b is None:
         return
     prod = b.production
     busy = bool(prod.get("active")) or (prod.get("queued") or 0) > 0
     if b.storage.ore >= 12 and b.storage.metal >= 6 and not busy:
-        b.build_robot(1)   # the growth driver — a new robot will spawn
+        b.build_robot(1)
+
+
+def _haul_to_base(r):
+    """Drop into the Base if adjacent, else head for a free Base-neighbour cell
+    (you can drop in from an adjacent cell, so haulers don't fight for one cell)."""
+    b = buildings.base
+    bx, by = b.position
+    p = r.position
+    if abs(p[0] - bx) + abs(p[1] - by) <= 1:
+        r.drop()
+        _maybe_build_robot()
+        return
+    occ = {x.position for x in robots.all() if x.id != r.id}
+    cands = sorted(
+        (abs(p[0] - (bx + dx)) + abs(p[1] - (by + dy)), (bx + dx, by + dy))
+        for dx, dy in DIRS
+        if (bx + dx, by + dy) not in occ
+    )
+    r.move_to(*(cands[0][1] if cands else (bx, by)))
+
+
+def _mine_active(pos):
+    """True if there's a finished Mining building at pos (our mine is built)."""
+    for b in buildings.of_type("mining"):
+        if b.position == pos and b.status == "active":
+            return True
+    return False
 
 
 def claim_spot(r):
@@ -82,7 +78,7 @@ def claim_spot(r):
     Base has less of (so the fleet supplies both ore and metal)."""
     from simcode import world
 
-    b = _base()
+    b = buildings.base
     prefer = "ore"
     if b is not None:
         if b.storage.ore == b.storage.metal:
@@ -103,97 +99,65 @@ def claim_spot(r):
     return best
 
 
-def _seek_spot(r):
-    """Claim a spot and walk to it; if none discovered, drift and scan again."""
-    spot = claim_spot(r)
-    if spot is not None:
-        HOME[r.id] = spot
-        GOAL[r.id] = "spot"
-        r.move_to(*spot)
-    else:
-        GOAL[r.id] = "explore"
-        x, y = r.position
-        r.move_to(x + 6, y)   # arrived(explore) -> scan again
-
-
-# --- handlers: each one ALWAYS issues a next command for the robot ---
-
-@on.spawn
-def spawn(e):
-    robots[e.robot_id].scan(radius=8)
-
-
-@on.scan_result
-def scanned(e):
+@on.idle
+def on_idle(e):
+    """A robot is free — decide its next command from its live state. Every path
+    issues exactly one command, so the robot becomes busy and fires `idle` again
+    when next free."""
     r = robots[e.robot_id]
-    if r.id in HOME:
-        GOAL[r.id] = "mine"
-        r.move_to(*HOME[r.id])
+    inv = r.inventory
+    home = HOME.get(r.id)
+
+    if buildings.base is None or buildings.base.position is None:
+        r.scan(radius=8)
         return
-    if r.inventory.ore >= MINE_ORE and r.inventory.metal >= MINE_METAL:
-        _seek_spot(r)
-    else:
-        # No kit and no mine — drift and keep looking (a future robot will mine).
-        GOAL[r.id] = "explore"
-        x, y = r.position
-        r.move_to(x + 6, y)
 
+    # No mine yet: spend the starter kit to build one (scan first if no spot known).
+    # NB: the kit (6 ore/3 metal) is inventory but is for BUILDING, not hauling.
+    if home is None:
+        if inv.ore >= MINE_ORE and inv.metal >= MINE_METAL:
+            spot = claim_spot(r)
+            if spot is not None:
+                HOME[r.id] = spot
+                _build(r) if r.position == spot else r.move_to(*spot)
+            else:
+                r.scan(radius=8)
+        else:
+            r.scan(radius=8)            # no kit, no mine -> scout
+        return
 
-@on.arrived
-def arrived(e):
-    r = robots[e.robot_id]
-    goal = GOAL.get(r.id, "explore")
-    if goal == "spot":
-        if r.here.spot and not r.here.building \
-                and r.inventory.ore >= MINE_ORE and r.inventory.metal >= MINE_METAL:
-            r.start_construction("mining")
-            r.drop(MINE_ORE, MINE_METAL)
-            r.connect()                       # -> construction_complete
-            GOAL[r.id] = "building"
+    built = _mine_active(home)
+
+    # Not standing on our mine yet.
+    if r.position != home:
+        if inv.ore + inv.metal > 0 and built:
+            _haul_to_base(r)            # carrying MINED output -> haul
+        else:
+            r.move_to(*home)            # carrying the kit (to build) or empty -> go to mine
+        return
+
+    # On our mine cell.
+    if not built:
+        b = r.here.building
+        if b is not None and b.status == "constructing":
+            r.connect()
+        elif b is None and r.here.spot and inv.ore >= MINE_ORE and inv.metal >= MINE_METAL:
+            _build(r)
         else:
             HOME.pop(r.id, None)
             r.scan(radius=8)
-    elif goal == "base":
-        r.drop()
-        _maybe_build_robot()
-        _send_home(r)
-    elif goal == "mine":
-        r.mine()                              # -> mining_complete
-    else:
-        r.scan(radius=8)                      # explore -> rescan
-
-
-@on.construction_complete
-def built(e):
-    robots[e.robot_id].mine()
-
-
-@on.mining_complete
-def mined(e):
-    r = robots[e.robot_id]
-    b = r.here.building
-    if b and b.type == "mining" and (b.storage.ore + b.storage.metal) >= HAUL_AT:
+        return
+    # Our mine is active.
+    if inv.ore + inv.metal > 0:
+        _haul_to_base(r)                # we just picked up a load
+    elif r.here.building.storage.ore + r.here.building.storage.metal >= HAUL_AT:
         r.pick_up()
-        _go_base(r)
     else:
         r.mine()
 
 
-@on.storage_full
-def overflow(e):
-    r = robots[e.robot_id]
-    r.pick_up()
-    _go_base(r)
-
-
-@on.blocked
-def blocked(e):
-    r = robots[e.robot_id]
-    goal = GOAL.get(r.id, "explore")
-    if goal == "base":
-        _go_base(r)                           # retry (pathfinding routes around)
-    elif goal in ("mine", "spot") and r.id in HOME:
-        r.move_to(*HOME[r.id])
-    else:
-        GOAL[r.id] = "explore"
-        r.scan(radius=8)
+@on.spot_depleted
+def on_spot_depleted(e):
+    """Our mine ran dry — abandon it; `idle` will fire and we'll scout again."""
+    HOME.pop(e.robot_id, None)
+    robots[e.robot_id].scan(radius=8)

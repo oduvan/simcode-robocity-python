@@ -55,15 +55,22 @@ Each event carries `e.robot_id`. Common events and their extra fields:
 
 | Event | Fields | Fires when |
 | --- | --- | --- |
-| `spawn` | — | a robot enters the world (or your code reloads). Entry point. |
+| **`idle`** | — | **a robot has no command and needs one** — after any command completes, or right after spawn. Fires once per free transition (not every tick). **This is the main hook: handle it, decide, issue the next command.** |
+| `spawn` | — | a robot enters the world (or your code reloads). |
 | `arrived` | `position` | a `move_to` reached its target. |
 | `blocked` | `reason` | a move/action couldn't complete. |
 | `scan_result` | `cells` | a `scan` finished; `cells` lists revealed tiles/spots. |
 | `construction_complete` | `building_id`, `type` | a platform finished (now active). |
 | `mining_complete` | `resource`, `amount` | a `mine` produced into the mine's store. |
+| `spot_depleted` | `building_id` | the resource spot a robot was mining ran out. |
 | `storage_full` | `building_id` | a building's storage is full. |
 | `inventory_full` | — | a robot can't carry more. |
 | `robot_produced` | `robot_id` | the Base finished a new robot. |
+
+The cleanest controller is built around **`idle`**: it fires exactly when a robot is free,
+so you don't poll and you don't have to chain every completion event by hand. The starter is
+essentially one `@on.idle` handler that reads the robot's live state and issues its next move.
+The other events are there when you want their payload (e.g. `scan_result.cells`).
 
 `subscribe(event, handler, once=False)` / `unsubscribe(...)` register at runtime too.
 
@@ -107,8 +114,9 @@ the robot's current cell (a robot can also drop into a Base/Storage on an **adja
   (it needs both to produce robots), reduce robots blocking each other near the Base, build
   **Storage** as a buffer and **Roads** for speed, and call `buildings.base.build_robot(...)`
   aggressively once resources allow.
-- **The game is purely event-driven — do NOT use an `on.tick` polling loop.** The golden
-  rule: **every handler must issue the robot's next command** (move/mine/build/haul/scan), so
-  a robot is never left idle with no future event to wake it. If a code path would leave a
+- **The game is purely event-driven — do NOT use an `on.tick` polling loop.** Build around
+  **`on.idle`**: it fires precisely when a robot needs a command. The golden rule: **every
+  handler must issue the robot's next command** (move/mine/build/haul/scan), so a robot is
+  never left idle with no future event to wake it. If a code path would leave a
   robot with nothing to do, make it `scan` or move instead. That single discipline is what
   keeps the city growing without any polling.
