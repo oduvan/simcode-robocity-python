@@ -75,23 +75,55 @@ just `move_to` a cell in the fog. There is no scan command.
 
 `subscribe(event, handler, once=False)` / `unsubscribe(...)` register at runtime too.
 
-### Command robots — `r = robots[id]`
-`r.move_to(x, y)` · `r.step(dir)` · `r.start_construction("mining"|"storage"|"road")`
-· `r.connect()` · `r.mine()` · `r.pick_up(ore=…, metal=…)` *(no args = all)* · `r.drop(ore=…, metal=…)`
-*(no args = all)* · `r.send(target_id, payload)` · `r.cancel()` · `r.log("…")`.
+### Command a robot — `r = robots[id]`
+A command tells one robot to do one thing. The robot can run **only one at a time** — issuing
+a new command replaces the current one. Timed commands (move/mine/connect) finish over several
+ticks and fire a completion event; instant ones (drop/pick_up/start_construction) resolve right
+away. **Either way, when the robot is free again it fires `idle`** — so you rarely need the
+specific completion events; just react to `idle`.
 
-Commands are **position-based** — `mine`/`drop`/`pick_up`/`connect`/`start_construction` act on
-the robot's current cell (a robot can also drop into a Base/Storage on an **adjacent** cell).
+| Call | What it does | Completes with |
+| --- | --- | --- |
+| `r.move_to(x, y)` | Walk toward cell `(x, y)`, automatically routing **around** other robots. Reveals the map (radius ~5) as it goes — this is how you explore. | `arrived` (or `blocked` if no path), then `idle` |
+| `r.step("N"\|"S"\|"E"\|"W")` | Move exactly one cell in a compass direction. | `arrived` / `blocked` |
+| `r.start_construction("mining"\|"storage"\|"road")` | Place a construction **platform** on your current cell. `mining` requires a resource spot there. Instant. | `construction_started` |
+| `r.connect()` | Join the construction platform on (or next to) your cell and build it. More robots connected → it finishes faster; the robot is busy until done. | `construction_complete` |
+| `r.mine()` | Mine the **Mining building on your cell** once — ore/metal goes into *that building's* store, not your inventory. | `mining_complete` (or `storage_full` / `spot_depleted`) |
+| `r.pick_up(ore=…, metal=…)` | Move resources from the building on your cell **into your inventory** (up to carry capacity). No args = take everything that fits. Instant. | resolves, then `idle` |
+| `r.drop(ore=…, metal=…)` | Deposit your inventory into the building on **(or adjacent to)** your cell — supply a construction platform, or feed the Base/Storage. No args = drop all. Instant. | `resource_delivered` |
+| `r.send(target_id, payload)` | Send a message to another robot. | the peer gets a `message` event |
+| `r.cancel()` | Abort the current command; the robot goes free. | `idle` |
+| `r.log("…")` | Write a line to the city log (for debugging your code). | — |
 
-### Read the world (read-only)
-- `robots[id]`, `robots.all()`, `robots.of_type(t)`. Robot: `.id .type .position .facing .state`
-  `.command .inventory(.ore/.metal/.free/.capacity/.is_full)` `.here(.terrain/.spot/.building)`
-  `.nearest(kind=|type=)` `.find(cells, kind=)` `.memory` `.log()`.
-- `buildings[id]`, `buildings.all()`, `buildings.of_type(t)`, `buildings.base`. Building:
-  `.type .position .status .storage(.ore/.metal/.capacity/.free) .spot .production .construction`.
-  Base only: `buildings.base.build_robot(n=1)` and `buildings.base.cancel()`.
-- `world.tick`, `world.size`, `world.spots()` (discovered spots), `world.discovered`.
-- `store` — a city-wide dict for your own persistent state.
+**Position-based:** `mine`, `connect`, `start_construction`, `pick_up`, `drop` act on whatever
+is on the robot's **current cell** (drop/connect also reach an **adjacent** cell). So to mine,
+first `move_to` the mine; to haul, `pick_up` on the mine then `move_to` the Base and `drop`.
+
+### Command the Base — `b = buildings.base`
+The Base isn't built or moved; you command it directly to grow the fleet.
+
+| Call | What it does |
+| --- | --- |
+| `buildings.base.build_robot(n=1)` | Queue `n` new robots. Each consumes `12 ore + 6 metal` from the Base's store and takes time; each finished one fires `robot_produced` and the new robot's first `idle`. Waits if the store is short. |
+| `buildings.base.cancel()` | Clear the pending production queue. |
+
+### Read the world (read-only handles)
+You never hold a live object — these read **fresh** state each time your handler runs.
+
+- **Robots:** `robots[id]`, `robots.all()`, `robots.of_type(t)`. A robot handle exposes
+  `r.id`, `r.type`, `r.position` `(x, y)`, `r.facing`, `r.state`
+  (`idle`/`moving`/`mining`/`building`/`hauling`/`blocked`), `r.command` (what it's doing),
+  `r.inventory` (`.ore`, `.metal`, `.free`, `.capacity`, `.is_full`), `r.here`
+  (`.terrain`, `.spot`, `.building` — what's on its cell), `r.nearest(kind=…|type=…)`,
+  and `r.memory` (a per-robot dict you can write to).
+- **Buildings:** `buildings[id]`, `buildings.all()`, `buildings.of_type(t)`, `buildings.base`.
+  A building handle exposes `.type` (`base`/`mining`/`storage`/`road`), `.position`,
+  `.status` (`constructing`/`active`), `.storage` (`.ore`/`.metal`/`.capacity`/`.free`),
+  `.spot` (Mining), `.production` (Base), `.construction` (while building: `.required`,
+  `.delivered`, `.connected`, `.progress`).
+- **World:** `world.tick`, `world.size`, `world.spots()` — the resource spots you've
+  **discovered so far** (each with `.position`, `.spot.resource`, `.spot.remaining`).
+- **`store`** — a city-wide dict for your own state that survives across events.
 
 ## Constraints — read before editing
 
