@@ -28,18 +28,29 @@ live page.
 Goal of the reference module: **grow the city**. The loop the starter implements:
 
 ```
-explore by moving (reveal the map) → build a Mining building on a resource spot → mine ore/metal
-  → haul it to the Base → the Base produces more robots → more robots → faster growth
+fly into the fog (reveal the map) → place a Mining site on a resource spot (world.build) →
+  the mine digs itself → haul its output to the Base → the Base produces more robots →
+  more robots → faster growth (recharge on a Flying Station so robots keep flying)
 ```
 
-- **Resources:** `ore` and `metal`, found at finite **spots**. Mine them into a Mining
-  building's local storage, then a robot **picks up** and **hauls** to the Base/Storage.
+- **The world is endless & continuous.** Robots have **float** `(x, y)` positions and **fly**
+  in straight lines from any point to any point, ignoring terrain and each other (no
+  pathfinding, multiple robots may share a spot). They interact with a building by their
+  **rounded cell** (`r.cell`). Flying **spends energy** (∝ distance); run the battery to zero
+  **mid-flight and the robot is destroyed** — its cargo vanishes. Recharge by landing on a
+  **Flying Station** and calling `r.charge()`.
+- **Resources:** `ore` and `metal`, found at finite **spots**. A **Mining building mines
+  autonomously** into its own storage — there is no `mine` command; a robot only **picks up**
+  the output and **hauls** it to the Base/Storage/a build site.
 - **Buildings:** **Base** (pre-placed, one; produces robots from its store — *not* withdrawable),
-  **Mining** (placed on a spot; cap'd storage), **Storage** (cheap, big buffer), **Road**
-  (cheap; robots move faster on it). All but the Base are built: `start_construction` →
-  `drop` resources to fulfill the recipe → `connect` (more connected robots finish faster).
-- **Construction recipe (Mining):** 6 ore + 3 metal. The fleet **starts with 2 robots**, each
-  carrying a 6/3 kit (enough to build one mine). Robots the Base produces also arrive with a kit.
+  **Mining** (placed on a live spot; auto-mines into cap'd storage), **Storage** (cheap, big
+  buffer), **Flying Station** (robots land and recharge). Every building except the Base is
+  **built autonomously**: place a site with `world.build(type, x, y)`, robots **`drop`**
+  resources to fulfil the recipe, and the site **self-completes** once supplied — no connect
+  step, no robot labor.
+- **Construction recipe (Mining):** 6 ore + 3 metal. The fleet **starts with a couple of
+  robots**, each carrying a 6/3 kit (enough to place one mine) and a **full battery**. Robots
+  the Base produces also arrive with a kit and full battery.
 - **Same map for everyone.** The module fixes the world seed, so *every* city of this type
   starts from the **identical canonical map** — the only variable is your code. It's a contest
   of whose program builds the better city.
@@ -55,49 +66,54 @@ Each event carries `e.robot_id`. Common events and their extra fields:
 
 | Event | Fields | Fires when |
 | --- | --- | --- |
-| **`idle`** | — | **a robot has no command and needs one** — after any command completes, or right after spawn. Fires once per free transition (not every tick). **This is the main hook: handle it, decide, issue the next command.** |
+| **`idle`** | — | **a robot has no command and needs one** — after any command completes, or right after spawn. Re-fires every few ticks while it stays free (not every tick). **This is the main hook: handle it, decide, issue the next command.** |
 | `spawn` | — | a robot enters the world (or your code reloads). |
-| `arrived` | `position` | a `move_to` reached its target. |
-| `blocked` | `reason` | a move/action couldn't complete. |
-| `construction_complete` | `building_id`, `type` | a platform finished (now active). |
-| `mining_complete` | `resource`, `amount` | a `mine` produced into the mine's store. |
-| `spot_depleted` | `building_id` | the resource spot a robot was mining ran out. |
-| `storage_full` | `building_id` | a building's storage is full. |
+| `arrived` | `position` | a `move_to` flight reached its target. |
+| `blocked` | `reason` | a move/action couldn't complete (e.g. `no_station`). |
+| `construction_started` | `building_id`, `type` | a `world.build(...)` placed a site. |
+| `resource_delivered` | `building_id`, `ore`, `metal` | a `drop` onto a site/store landed. |
+| `construction_complete` | `building_id`, `type` | a site finished building (now active). |
+| `spot_depleted` | `building_id` | a Mining building's resource spot ran out (no `robot_id`). |
+| `storage_full` | `building_id` | a building's storage is full (no `robot_id`). |
 | `inventory_full` | — | a robot can't carry more. |
 | `robot_produced` | `robot_id` | the Base finished a new robot. |
+| `robot_destroyed` | `position`, `reason` | a robot ran out of energy **mid-flight** — gone, cargo lost. |
+| `charge_complete` | — | a robot on a Flying Station finished charging (battery full). |
+| `message` | `from`, `payload` | another robot messaged this one. |
 
 The cleanest controller is built around **`idle`**: it fires exactly when a robot is free,
 so you don't poll and you don't have to chain every completion event by hand. The starter is
 essentially one `@on.idle` handler that reads the robot's live state and issues its next move.
 The other events are there when you want their payload (e.g. `arrived.position`). Discovery
-happens **by moving** — a robot reveals a radius (~5) around itself as it moves; to explore,
-just `move_to` a cell in the fog. There is no scan command.
+happens **by flying** — a robot reveals a radius (~5) around itself as it moves; to explore,
+just `move_to` a point in the fog. There is no separate reveal command.
 
 `subscribe(event, handler, once=False)` / `unsubscribe(...)` register at runtime too.
 
 ### Command a robot — `r = robots[id]`
 A command tells one robot to do one thing. The robot can run **only one at a time** — issuing
-a new command replaces the current one. Timed commands (move/mine/connect) finish over several
-ticks and fire a completion event; instant ones (drop/pick_up/start_construction) resolve right
+a new command replaces the current one. Timed commands (`move_to`, `charge`) finish over
+several ticks and fire a completion event; instant ones (`pick_up`, `drop`) resolve right
 away. **Either way, when the robot is free again it fires `idle`** — so you rarely need the
-specific completion events; just react to `idle`.
+specific completion events; just react to `idle`. Placing a building is a **world** command,
+`world.build(...)`, not bound to a robot.
 
 | Call | What it does | Completes with |
 | --- | --- | --- |
-| `r.move_to(x, y)` | Walk toward cell `(x, y)`, automatically routing **around** other robots. Reveals the map (radius ~5) as it goes — this is how you explore. | `arrived` (or `blocked` if no path), then `idle` |
-| `r.step("N"\|"S"\|"E"\|"W")` | Move exactly one cell in a compass direction. | `arrived` / `blocked` |
-| `r.start_construction("mining"\|"storage"\|"road")` | Place a construction **platform** on your current cell. `mining` requires a resource spot there. Instant. | `construction_started` |
-| `r.connect()` | Join the construction platform on (or next to) your cell and build it. More robots connected → it finishes faster; the robot is busy until done. | `construction_complete` |
-| `r.mine()` | Mine the **Mining building on your cell** once — ore/metal goes into *that building's* store, not your inventory. | `mining_complete` (or `storage_full` / `spot_depleted`) |
-| `r.pick_up(ore=…, metal=…)` | Move resources from the building on your cell **into your inventory** (up to carry capacity). No args = take everything that fits. Instant. | resolves, then `idle` |
-| `r.drop(ore=…, metal=…)` | Deposit your inventory into the building on **(or adjacent to)** your cell — supply a construction platform, or feed the Base/Storage. No args = drop all. Instant. | `resource_delivered` |
+| `r.move_to(x, y)` | **Fly** in a straight line to float `(x, y)`, ignoring terrain/other robots. Spends energy with distance; reveals the map (radius ~5) as it goes — this is how you explore. | `arrived` / `blocked` / `robot_destroyed` |
+| `world.build("mining"\|"storage"\|"flying_station", x, y)` | Place a self-building construction **site** at `(x, y)`. `mining` must be on a live resource spot; the Base isn't buildable. **Not** bound to a robot. | `construction_started` / `blocked` |
+| `r.pick_up(ore=…, metal=…)` | Grab resources from the building **on your cell** into your inventory (up to carry capacity). No args = take everything that fits. Instant. | resolves, then `idle` |
+| `r.drop(ore=…, metal=…)` | Release your inventory into the building/site **on your cell** — supply a build site, or feed the Base/Storage. No args = drop all. Instant. | `resource_delivered` |
+| `r.charge()` | Charge on the **Flying Station on your cell**; holds the robot until the battery is full. | `charge_complete` / `blocked` (`no_station`) |
 | `r.send(target_id, payload)` | Send a message to another robot. | the peer gets a `message` event |
 | `r.cancel()` | Abort the current command; the robot goes free. | `idle` |
 | `r.log("…")` | Write a line to the city log (for debugging your code). | — |
 
-**Position-based:** `mine`, `connect`, `start_construction`, `pick_up`, `drop` act on whatever
-is on the robot's **current cell** (drop/connect also reach an **adjacent** cell). So to mine,
-first `move_to` the mine; to haul, `pick_up` on the mine then `move_to` the Base and `drop`.
+**Position-based:** `pick_up`, `drop`, and `charge` act on whatever building/site is on the
+robot's **current (rounded) cell** (`r.cell`). So to haul, `move_to` the mine, `pick_up`, then
+`move_to` the Base and `drop`; to recharge, `move_to` a Flying Station then `charge()`. Mining
+and construction are **autonomous**, so there are no robot-driven mining, build-wiring,
+site-placing, or single-step-move commands — robots only fly, haul, and charge.
 
 ### Command the Base — `b = buildings.base`
 The Base isn't built or moved; you command it directly to grow the fleet.
@@ -111,18 +127,23 @@ The Base isn't built or moved; you command it directly to grow the fleet.
 You never hold a live object — these read **fresh** state each time your handler runs.
 
 - **Robots:** `robots[id]`, `robots.all()`, `robots.of_type(t)`. A robot handle exposes
-  `r.id`, `r.type`, `r.position` `(x, y)`, `r.facing`, `r.state`
-  (`idle`/`moving`/`mining`/`building`/`hauling`/`blocked`), `r.command` (what it's doing),
-  `r.inventory` (`.ore`, `.metal`, `.free`, `.capacity`, `.is_full`), `r.here`
-  (`.terrain`, `.spot`, `.building` — what's on its cell), `r.nearest(kind=…|type=…)`,
-  and `r.memory` (a per-robot dict you can write to).
+  `r.id`, `r.type`, `r.position` → **float** `(x, y)`, `r.cell` → the **rounded** `(x, y)` used
+  for position-based actions, `r.facing`, `r.state`
+  (`idle`/`moving`/`charging`/`hauling`/`blocked`), `r.command` (what it's doing),
+  `r.energy` (battery, 0…cap), `r.inventory` (`.ore`, `.metal`, `.free`, `.capacity`,
+  `.is_full`), `r.here` (`.terrain`, `.spot`, `.building` — what's on its cell),
+  `r.nearest(kind=…|type=…)`, and `r.memory` (a per-robot dict you can write to).
 - **Buildings:** `buildings[id]`, `buildings.all()`, `buildings.of_type(t)`, `buildings.base`.
-  A building handle exposes `.type` (`base`/`mining`/`storage`/`road`), `.position`,
+  A building handle exposes `.type` (`base`/`mining`/`storage`/`flying_station`), `.position`,
   `.status` (`constructing`/`active`), `.storage` (`.ore`/`.metal`/`.capacity`/`.free`),
-  `.spot` (Mining), `.production` (Base), `.construction` (while building: `.required`,
-  `.delivered`, `.connected`, `.progress`).
-- **World:** `world.tick`, `world.size`, `world.spots()` — the resource spots you've
-  **discovered so far** (each with `.position`, `.spot.resource`, `.spot.remaining`).
+  `.spot` (Mining: `.resource`, `.remaining` — the building auto-mines into its storage),
+  `.production` (Base), `.construction` (while building: `.required`, `.delivered`,
+  `.progress` — sites self-complete, so **no `connected` field**).
+- **World:** `world.tick`; `world.size` (bounding box of the **discovered** region — a viewport
+  hint, not a fixed extent), `world.origin`, `world.endless` (`True`); `world.spots()` — the
+  resource spots you've **discovered so far** (each with `.position`, `.spot.resource`,
+  `.spot.remaining`); `world.cells()` — the revealed tiles. The world is **endless**, generated
+  lazily as robots fly into the fog. `world.build(type, x, y)` places a construction site.
 - **`store`** — a city-wide dict for your own state that survives across events.
 
 ## Constraints — read before editing
@@ -144,13 +165,14 @@ You never hold a live object — these read **fresh** state each time your handl
 - You can't run the engine locally; iterate by reading the logic carefully and by checking the
   live city + logs after a push (or via the platform's MCP tools).
 - High-leverage improvements over the starter: keep the Base fed with **both** ore and metal
-  (it needs both to produce robots), reduce robots blocking each other near the Base, build
-  **Storage** as a buffer and **Roads** for speed, and call `buildings.base.build_robot(...)`
+  (it needs both to produce robots), build a **Flying Station** early and recharge robots
+  **before** they run dry (a robot that runs out of energy mid-flight is destroyed and its
+  cargo lost), add **Storage** as a buffer, and call `buildings.base.build_robot(...)`
   aggressively once resources allow.
 - **The game is purely event-driven — do NOT use an `on.tick` polling loop.** Build around
   **`on.idle`**: it fires precisely when a robot needs a command. The golden rule: **every
-  handler must issue the robot's next command** (move/mine/build/haul), so a robot is
-  never left idle with no future event to wake it. (And since `idle` re-fires while a robot
-  stays free, a robot is never permanently stuck.) If a code path would leave a robot with
-  nothing to do, move it into unexplored ground instead — moving reveals new map. That single
-  discipline is what keeps the city growing without any polling.
+  handler must issue the robot's next command** (fly / haul / `world.build` / `charge`), so a
+  robot is never left idle with no future event to wake it. (And since `idle` re-fires while a
+  robot stays free, a robot is never permanently stuck.) If a code path would leave a robot
+  with nothing to do, fly it into unexplored ground instead — flying reveals new map. That
+  single discipline is what keeps the city growing without any polling.

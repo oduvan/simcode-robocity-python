@@ -1,47 +1,132 @@
 """Robot City Builder — starter controller (Python).
 
 One script drives the whole fleet by id. The game is event-driven: whenever a
-robot is free it fires `idle`, and you give it its next command. This starter is
-a simple loop per robot:
+robot is free it fires ``idle``, and you give it its next command.
 
-    find a free resource spot  ->  build a mine on it  ->  mine  ->  haul to the
-    Base  ->  go back and mine again.  (And the Base builds more robots.)
+The world (redesigned): robots **fly** in straight lines over float coordinates
+and spend **energy** doing it — run out mid-flight and the robot is destroyed.
+Mining and construction are **autonomous**: you place a build site with
+``world.build(...)`` and robots only **haul** resources to it; a Mining building
+then digs on its own. Robots recharge by landing on a **Flying Station** and
+calling ``charge()``.
 
-That's the whole thing. Read it, then make it smarter — balance ore vs metal,
-build Storage/Roads, keep robots from bunching at the Base, etc.
-See CLAUDE.md for the full SDK + rules.
+This starter loop, per robot:
+
+    holds a starter kit  ->  fly to a resource spot, place a Mining site, drop the kit
+    empty-handed         ->  haul a Mining building's output to the Base (which builds
+                             more robots) or to a build site that still needs it
+    low on energy        ->  fly to a Flying Station and charge
+
+Read it, then make it smarter. See CLAUDE.md for the full SDK + rules.
 """
 
 from simcode import buildings, on, robots, world
 
-MINE: dict = {}   # robot id -> the (x, y) spot it claimed and works
-STEP: dict = {}   # robot id -> a counter, so exploring changes direction
+LOW_ENERGY = 30            # recharge below this much battery
+MINE_COST = (6, 3)         # a Mining site needs 6 ore + 3 metal
+STATION_COST = (4, 2)      # a Flying Station needs 4 ore + 2 metal
+
+STEP: dict = {}            # robot id -> explore counter (so robots fan out)
 
 
-def free_spot(want):
-    """A discovered resource spot that no robot has claimed yet, preferring the
+# --- reading the world (fresh each event) ----------------------------------
+
+def dist(a, b):
+    return abs(a[0] - b[0]) + abs(a[1] - b[1])
+
+
+def built_cells():
+    """Cells that already hold a building OR a pending construction site."""
+    return {b.position for b in buildings.all()}
+
+
+def unbuilt_spot(r, want):
+    """Nearest discovered resource spot with nothing built on it, preferring the
     resource `want` (so the fleet mines both ore and metal, not just one)."""
-    claimed = set(MINE.values())
+    built = built_cells()
     cands = [s for s in world.spots()
-             if s.position not in claimed and s.spot.remaining > 0]
-    cands.sort(key=lambda s: s.spot.resource != want)   # wanted resource first
-    return cands[0].position if cands else None
+             if s.position not in built and s.spot.remaining > 0]
+    if not cands:
+        return None
+    cands.sort(key=lambda s: (s.spot.resource != want, dist(r.position, s.position)))
+    return cands[0].position
 
 
-def mine_built(pos):
-    """True once a Mining building stands on `pos`."""
-    return any(b.position == pos and b.type == "mining" for b in buildings.all())
+def stocked_mine(r):
+    """Nearest active Mining building holding enough output to be worth a trip."""
+    mines = [b for b in buildings.of_type("mining")
+             if b.status == "active" and b.storage.ore + b.storage.metal >= 6]
+    if not mines:
+        return None
+    return min(mines, key=lambda b: dist(r.position, b.position))
+
+
+def active_station(r):
+    """Nearest active Flying Station, or None."""
+    stations = [b for b in buildings.of_type("flying_station") if b.status == "active"]
+    if not stations:
+        return None
+    return min(stations, key=lambda b: dist(r.position, b.position))
+
+
+def any_station():
+    """True if a Flying Station exists or is being built."""
+    return any(b.type == "flying_station" for b in buildings.all())
+
+
+def mine_covers(res):
+    """True if a Mining building for `res` exists (active or under construction).
+    The Base needs BOTH ore and metal to make robots, and the two starting kits
+    fund exactly one ore + one metal mine — so build the missing one first."""
+    return any(b.type == "mining" and b.spot and b.spot.resource == res
+               for b in buildings.all())
+
+
+def needy_site(inv):
+    """A construction site that still needs a resource this robot is carrying."""
+    for b in buildings.all():
+        if b.status != "constructing":
+            continue
+        c = b.construction
+        need_ore = c.required.get("ore", 0) - c.delivered.get("ore", 0)
+        need_metal = c.required.get("metal", 0) - c.delivered.get("metal", 0)
+        if (need_ore > 0 and inv.ore > 0) or (need_metal > 0 and inv.metal > 0):
+            return b
+    return None
+
+
+def empty_near_base(base):
+    """Nearest discovered empty cell (no spot, no building) around the Base."""
+    built = built_cells()
+    best, bestd = None, 10**9
+    for c in world.cells():
+        p = (c.x, c.y)
+        if p in built or c.spot is not None:
+            continue
+        d = dist(base.position, p)
+        if 0 < d < bestd:
+            best, bestd = p, d
+    return best
+
+
+def goto(r, pos, then):
+    """Fly to a cell, or run `then()` once we're on it."""
+    if r.cell == tuple(pos):
+        then()
+    else:
+        r.move_to(*pos)
 
 
 def explore(r):
-    """Move to reveal more of the map (direction rotates so robots fan out)."""
-    w, h = world.size
+    """Fly outward to reveal more of the endless map (robots fan out)."""
     i = STEP.get(r.id, 0)
     STEP[r.id] = i + 1
-    dx, dy = ((5, 0), (0, 5), (-5, 0), (0, -5))[(i + len(r.id)) % 4]
+    dx, dy = ((6, 0), (0, 6), (-6, 0), (0, -6))[(i + len(r.id)) % 4]
     x, y = r.position
-    r.move_to(max(0, min(x + dx, w - 1)), max(0, min(y + dy, h - 1)))
+    r.move_to(x + dx, y + dy)
 
+
+# --- the brain: one handler, fires whenever a robot is free ----------------
 
 @on.idle
 def act(e):
@@ -50,53 +135,58 @@ def act(e):
     if base is None:
         return
 
-    # 1. No spot yet — claim one (or move to reveal more map if none is in view).
-    if r.id not in MINE:
-        # Mine whichever resource the Base has less of; if it's even (e.g. the
-        # very start, 0/0), split robots by id so we get BOTH ore and metal.
-        o, m = base.storage.ore, base.storage.metal
-        if o == m:
-            want = "ore" if sum(map(ord, r.id)) % 2 else "metal"
-        else:
-            want = "ore" if o < m else "metal"
-        spot = free_spot(want)
-        if spot is None:
-            explore(r)
-            return
-        MINE[r.id] = spot
-
-    spot = MINE[r.id]
-
-    # 2. My mine isn't built yet — go to the spot and build it with my kit.
-    if not mine_built(spot):
-        if r.position == spot:
-            r.start_construction("mining")
-            r.drop(6, 3)
-            r.connect()
-        else:
-            r.move_to(*spot)
+    # 0. Low battery -> land on a Flying Station and charge (if one exists).
+    st = active_station(r)
+    if r.energy is not None and r.energy <= LOW_ENERGY and st is not None:
+        goto(r, st.position, r.charge)
         return
 
-    # 3. Carrying ore/metal — haul it to the Base (which builds more robots).
+    # 1. Holding a full starter kit -> turn a resource spot into a Mining site.
+    #    (Starting/produced robots arrive with 6 ore / 3 metal — one mine's worth.)
+    if r.inventory.ore >= MINE_COST[0] and r.inventory.metal >= MINE_COST[1]:
+        # Cover BOTH resources first (the Base needs ore AND metal to grow); only
+        # then mine whichever the Base is shorter on.
+        if not mine_covers("metal"):
+            want = "metal"
+        elif not mine_covers("ore"):
+            want = "ore"
+        else:
+            want = "ore" if base.storage.ore <= base.storage.metal else "metal"
+        spot = unbuilt_spot(r, want)
+        if spot is not None:
+            if r.cell == spot:
+                world.build("mining", *spot)   # self-builds once supplied
+                r.drop(*MINE_COST)
+            else:
+                r.move_to(*spot)
+        else:
+            explore(r)                          # nothing to claim — reveal more map
+        return
+
+    # 2. Carrying mined output -> deliver to a build site that needs it, else Base.
     if r.inventory.ore + r.inventory.metal > 0:
-        bx, by = base.position
-        if abs(r.position[0] - bx) + abs(r.position[1] - by) <= 1:
+        site = needy_site(r.inventory)
+        target = site.position if site else base.position
+        if r.cell == tuple(target):
             r.drop()
-            base.build_robot(1)
+            if not site:
+                base.build_robot(1)             # feed growth at the Base
         else:
-            r.move_to(bx, by)
+            r.move_to(*target)
         return
 
-    # 4. Empty — work my mine: stand on it, fill it up, then carry a load.
-    if r.position != spot:
-        r.move_to(*spot)
-    elif r.here.building.storage.ore + r.here.building.storage.metal >= 6:
-        r.pick_up()
-    else:
-        r.mine()
+    # 3. Empty-handed -> haul a stocked mine's output.
+    mine = stocked_mine(r)
+    if mine is not None:
+        goto(r, mine.position, r.pick_up)
+        return
 
-
-@on.spot_depleted
-def depleted(e):
-    # My spot ran out — forget it; next `idle` I'll look for a new one.
-    MINE.pop(e.robot_id, None)
+    # 4. Idle with nothing to haul -> once both mines exist, make sure a Flying
+    #    Station exists (don't spend the scarce starting metal on it too early),
+    #    else explore.
+    if st is None and not any_station() and mine_covers("ore") and mine_covers("metal"):
+        spot = empty_near_base(base)
+        if spot is not None:
+            world.build("flying_station", *spot)  # haulers will supply it
+            return
+    explore(r)
