@@ -37,12 +37,17 @@ def act(e):
 
     # Turn back and charge while the battery can still get us home.
     if r.energy is not None and r.energy <= home + 15:
-        r.charge() if at_base else r.move_to(bx, by)
+        if at_base:
+            r.charge()
+        else:
+            r.log("low battery — returning to base to charge")
+            r.move_to(bx, by)
         return
 
     # Starting a fresh trip from the Base → advance the heading so this outing
     # explores new ground instead of repeating the last one.
     if at_base:
         TRIP[r.id] = TRIP.get(r.id, 0) + 1
+        r.log("charged — heading out to explore new ground")
     dx, dy = DIRS[(sum(map(ord, r.id)) + TRIP.get(r.id, 0)) % len(DIRS)]
     r.move_to(x + dx * 5, y + dy * 5)
