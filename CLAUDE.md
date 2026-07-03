@@ -10,6 +10,26 @@ live page.
 > This is a **user code repo**, not the platform. You only write the controller. The
 > `simcode` SDK, the world, the rules, and the robots all come from the platform.
 
+## ⚡ Test locally BEFORE you push (do this every iteration)
+
+Pushing to see the result is slow. There's a **local simulator** that runs your
+`main.py` against a faithful offline copy of the game engine — no network, no deploy
+wait — so you can iterate in seconds and only push once it behaves. **Install it and use
+it on every change.**
+
+```bash
+pip install "git+https://github.com/oduvan/simcode-robocity-python-tools"
+
+robocity-sim run main.py --ticks 500        # human-readable feed + summary
+robocity-sim run main.py --ticks 500 --json # machine-readable (parse summary + feed)
+```
+
+Your `main.py` runs **unchanged**. Read the `SUMMARY`: `robots destroyed` should be
+**0**, and `ore/metal mined` + `buildings` should grow if the city is developing (the
+starter only explores, so it mines nothing — beat that). It's **deterministic** (same
+seed → same run), so a change's effect is directly comparable. Only push after a local
+run looks right. See that repo's `CLAUDE.md` for full usage (incl. `--from-live`).
+
 ## How it works (the model)
 
 - **One script, whole fleet.** `main.py` controls every robot, addressed by **id**.
