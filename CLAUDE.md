@@ -13,22 +13,25 @@ live page.
 ## ⚡ Test locally BEFORE you push (do this every iteration)
 
 Pushing to see the result is slow. There's a **local simulator** that runs your
-`main.py` against a faithful offline copy of the game engine — no network, no deploy
-wait — so you can iterate in seconds and only push once it behaves. **Install it and use
-it on every change.**
+`main.py` against an offline copy of the game engine, **seeded from your city's
+CURRENT state**, so you can check "does this actually work if I push it *now*?" in
+seconds — and only push once it behaves. **Install it and use it on every change.**
 
 ```bash
 pip install "git+https://github.com/oduvan/simcode-robocity-python-tools"
+export SIMCODE_TOKEN=...   # your MCP token (dashboard → "Connect via MCP")
 
-robocity-sim run main.py --ticks 500        # human-readable feed + summary
-robocity-sim run main.py --ticks 500 --json # machine-readable (parse summary + feed)
+robocity-sim run main.py          # tests from THIS city's current state (auto-detected)
+robocity-sim run main.py --json   # machine-readable (parse summary + feed)
+robocity-sim run main.py --fresh  # or a clean seed-0 world (a new city / a baseline)
 ```
 
-Your `main.py` runs **unchanged**. Read the `SUMMARY`: `robots destroyed` should be
-**0**, and `ore/metal mined` + `buildings` should grow if the city is developing (the
-starter only explores, so it mines nothing — beat that). It's **deterministic** (same
-seed → same run), so a change's effect is directly comparable. Only push after a local
-run looks right. See that repo's `CLAUDE.md` for full usage (incl. `--from-live`).
+Run it **inside this repo** with your token set — the tool auto-detects which city
+this repo is and fetches its live state. Your `main.py` runs **unchanged**. Read the
+`SUMMARY`: `robots destroyed` should be **0**, and `ore/metal mined` + `buildings`
+should grow if the city is developing. A live run is *approximate* (a quick "does it
+work now" check, not a perfect sim) — real edge cases surface after you push. Only
+push after a local run looks right. See that repo's `CLAUDE.md` for full usage.
 
 ## How it works (the model)
 
