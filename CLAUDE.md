@@ -32,6 +32,12 @@ should grow if the city is developing. A live run is *approximate* (a quick "doe
 work now" check, not a perfect sim) — real edge cases surface after you push. Only
 push after a local run looks right. See that repo's `CLAUDE.md` for full usage.
 
+> **Check your code with `robocity-sim run main.py` — NOT `python main.py`.** The
+> `simcode` SDK is **not** a pip package (the platform provides it at runtime), so
+> running your file directly just fails on `import simcode`. `robocity-sim` provides
+> the SDK locally *and* runs your code against the engine, so you verify **behaviour**,
+> not just that it imports. It's the one reliable way to check a controller.
+
 ## How it works (the model)
 
 - **One script, whole fleet.** `main.py` controls every robot, addressed by **id**.
