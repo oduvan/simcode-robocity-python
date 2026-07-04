@@ -19,4 +19,18 @@ lib/           # optional helper modules main.py imports
 CLAUDE.md      # the SDK + game reference
 ```
 
+## Test it locally before you push
+
+There's a local tool that runs your `main.py` against your city's **current state**,
+so you can check "does this actually work if I push it now?" in seconds:
+
+```bash
+pip install "git+https://github.com/oduvan/simcode-robocity-python-tools"
+export SIMCODE_TOKEN=...          # dashboard → "Connect via MCP"
+robocity-sim run main.py          # tests THIS city's current state
+```
+
+Run it inside this repo with your token set — it auto-detects your city. See
+[`CLAUDE.md`](CLAUDE.md) for full usage.
+
 Have fun — the map is the same for everyone, so it's all about your code.
