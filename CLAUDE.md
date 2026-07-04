@@ -21,9 +21,8 @@ seconds — and only push once it behaves. **Install it and use it on every chan
 pip install "git+https://github.com/oduvan/simcode-robocity-python-tools"
 export SIMCODE_TOKEN=...   # your MCP token (dashboard → "Connect via MCP")
 
-robocity-sim run main.py          # tests from THIS city's current state (auto-detected)
+robocity-sim run main.py          # tests THIS city's current state (auto-detected)
 robocity-sim run main.py --json   # machine-readable (parse summary + feed)
-robocity-sim run main.py --fresh  # or a clean seed-0 world (a new city / a baseline)
 ```
 
 Run it **inside this repo** with your token set — the tool auto-detects which city
