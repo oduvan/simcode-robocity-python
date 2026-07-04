@@ -26,11 +26,10 @@ so you can check "does this actually work if I push it now?" in seconds:
 
 ```bash
 pip install "git+https://github.com/oduvan/simcode-robocity-python-tools"
-export SIMCODE_TOKEN=...          # dashboard → "Connect via MCP"
-robocity-sim run main.py          # tests THIS city's current state
+robocity-sim run main.py          # tests THIS city's current state (no token needed)
 ```
 
-Run it inside this repo with your token set — it auto-detects your city. See
-[`CLAUDE.md`](CLAUDE.md) for full usage.
+Run it inside this repo — a city's live state is public, so no token is needed; it
+auto-detects your city from the git remote. See [`CLAUDE.md`](CLAUDE.md) for full usage.
 
 Have fun — the map is the same for everyone, so it's all about your code.

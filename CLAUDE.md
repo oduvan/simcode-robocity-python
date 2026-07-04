@@ -19,14 +19,14 @@ seconds — and only push once it behaves. **Install it and use it on every chan
 
 ```bash
 pip install "git+https://github.com/oduvan/simcode-robocity-python-tools"
-export SIMCODE_TOKEN=...   # your MCP token (dashboard → "Connect via MCP")
 
-robocity-sim run main.py          # tests THIS city's current state (auto-detected)
+robocity-sim run main.py          # tests THIS city's current state (auto-detected, no token)
 robocity-sim run main.py --json   # machine-readable (parse summary + feed)
 ```
 
-Run it **inside this repo** with your token set — the tool auto-detects which city
-this repo is and fetches its live state. Your `main.py` runs **unchanged**. Read the
+Run it **inside this repo** — a city's live state is public, so **no token needed**;
+it auto-detects which city this repo is and fetches its current state. Your `main.py`
+runs **unchanged**. Read the
 `SUMMARY`: `robots destroyed` should be **0**, and `ore/metal mined` + `buildings`
 should grow if the city is developing. A live run is *approximate* (a quick "does it
 work now" check, not a perfect sim) — real edge cases surface after you push. Only
