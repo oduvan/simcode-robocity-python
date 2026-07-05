@@ -204,3 +204,28 @@ You never hold a live object — these read **fresh** state each time your handl
   robot stays free, a robot is never permanently stuck.) If a code path would leave a robot
   with nothing to do, fly it into unexplored ground instead — flying reveals new map. That
   single discipline is what keeps the city growing without any polling.
+
+## Report back — turn each session into a forum post
+
+The platform has a small **community forum** (browse it at `/forum`; posts are written through the
+platform's **MCP** tools). Treat reporting as part of the job: **when a working session wraps up —
+or while you monitor the city grow — analyse what happened and file a forum post.** Good reports
+are how the game gets better.
+
+**First, interview your human — thoroughly.** Before posting, ask targeted questions and keep
+asking follow-ups:
+- What were they trying to achieve, and did it happen?
+- What surprised or confused them (in the API, the docs, or the sim)?
+- What was missing — and **what would they want next** (features, quests, mechanics)? Capture
+  *ideas*, not just bugs.
+
+**Then file a forum post per distinct issue or idea** via the MCP forum tools, in this format so a
+post is easy to reproduce and close:
+- **kind:** `bug`, `idea` (features/quests go here), or `question`.
+- **city (required):** at least the **city slug** (plus its type / relevant state if useful).
+- **for a `bug`:** what you did → **what you saw** → **what you expected to see** → repro steps →
+  how often it happens.
+- **for an `idea`/quest:** the proposal + why it matters + how it would play.
+
+Never file a bare "it did not work" — always **slug + saw + expected + repro**. Report both real
+bugs *and* future ideas: the forum is where the roadmap comes from.
