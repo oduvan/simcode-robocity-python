@@ -27,15 +27,17 @@ CLAUDE.md      # the SDK + game reference
 
 ## Test it locally before you push
 
-There's a local tool that runs your `main.py` against your city's **current state**,
-so you can check "does this actually work if I push it now?" in seconds:
+You can run your `main.py` against the **real game engine** on your machine — the exact
+engine the server runs, downloaded on demand — so you can check "does this actually work
+if I push it now?" in seconds:
 
 ```bash
-pip install "git+https://github.com/oduvan/simcode-robocity-python-tools"
-robocity-sim run main.py          # tests THIS city's current state (no token needed)
+pip install "git+https://github.com/oduvan/simcode-sdk-python"   # the simcode SDK (one time)
+python -m simcode.local main.py                                  # run vs the real engine
 ```
 
-Run it inside this repo — a city's live state is public, so no token is needed; it
-auto-detects your city from the git remote. See [`CLAUDE.md`](CLAUDE.md) for full usage.
+The first run downloads + caches the engine (no build step, no token); later runs are
+instant. Read the summary — `handler errors` must be **0**. See [`CLAUDE.md`](CLAUDE.md)
+for full usage and options (`--ticks`, `--seed`, `--json`).
 
 Have fun — the map is the same for everyone, so it's all about your code.

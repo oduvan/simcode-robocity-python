@@ -12,31 +12,38 @@ live page.
 
 ## ⚡ Test locally BEFORE you push (do this every iteration)
 
-Pushing to see the result is slow. There's a **local simulator** that runs your
-`main.py` against an offline copy of the game engine, **seeded from your city's
-CURRENT state**, so you can check "does this actually work if I push it *now*?" in
-seconds — and only push once it behaves. **Install it and use it on every change.**
+Pushing to see the result is slow. You can run your `main.py` against the **real game
+engine** on your own machine — it's the *exact* engine the server runs (downloaded on
+demand, **not** a re-implementation) — so checking "does this actually work if I push
+it *now*?" takes seconds. **Install the SDK once, then run the local check on every
+change.**
 
 ```bash
-pip install "git+https://github.com/oduvan/simcode-robocity-python-tools"
+pip install "git+https://github.com/oduvan/simcode-sdk-python"   # the simcode SDK (one time)
 
-robocity-sim run main.py          # tests THIS city's current state (auto-detected, no token)
-robocity-sim run main.py --json   # machine-readable (parse summary + feed)
+python -m simcode.local main.py                 # run your controller vs the REAL engine
+python -m simcode.local main.py --ticks 300     # simulate more ticks
+python -m simcode.local main.py --json          # machine-readable summary
 ```
 
-Run it **inside this repo** — a city's live state is public, so **no token needed**;
-it auto-detects which city this repo is and fetches its current state. Your `main.py`
-runs **unchanged**. Read the
-`SUMMARY`: `robots destroyed` should be **0**, and `ore/metal mined` + `buildings`
-should grow if the city is developing. A live run is *approximate* (a quick "does it
-work now" check, not a perfect sim) — real edge cases surface after you push. Only
-push after a local run looks right. See that repo's `CLAUDE.md` for full usage.
+The **first run downloads the engine** from the server (`GET /api/engine/lib`) and
+**caches** it under `~/.cache/simcode/`, so later runs are instant — no build step, no
+token. Your `main.py` runs **unchanged**. Read the summary: `handler errors` must be
+**0**, `robots destroyed` should be **0**, and `buildings` / `map revealed` should grow
+if the controller is actually doing something. The exit code is non-zero if any handler
+raised, so you can gate a push on it. Only push after a local run looks right.
 
-> **Check your code with `robocity-sim run main.py` — NOT `python main.py`.** The
-> `simcode` SDK is **not** a pip package (the platform provides it at runtime), so
-> running your file directly just fails on `import simcode`. `robocity-sim` provides
-> the SDK locally *and* runs your code against the engine, so you verify **behaviour**,
-> not just that it imports. It's the one reliable way to check a controller.
+> **Check your code with `python -m simcode.local main.py` — NOT `python main.py`.**
+> Running the file directly only *imports* it — it registers your handlers and exits
+> without ever running the engine, so you learn nothing about behaviour (and it can't
+> talk to the live platform). `python -m simcode.local` drives your handlers against the
+> real engine tick by tick, so you verify **behaviour**, not just that it imports. It's
+> the one reliable way to check a controller.
+
+> **Platform note:** the engine library is a glibc-linked Linux/macOS build, so run local
+> tests on a normal glibc host (system `python3` / a `python:3.x` image — **not**
+> Alpine/musl). To use a locally-built engine instead of the download, point
+> `SIMCODE_ENGINE_SO` at a `libengine.so`; point `SIMCODE_SERVER` at a different server.
 
 ## How it works (the model)
 
@@ -230,7 +237,8 @@ You never hold a live object — these read **fresh** state each time your handl
 
 - The thing to improve is the **strategy** in `main.py` (and `lib/`). The world is fixed, so
   better code = a better city.
-- You can't run the engine locally; iterate by reading the logic carefully and by checking the
+- **Iterate with the local check:** run `python -m simcode.local main.py` after every edit (it
+  runs your controller against the real engine — see the top of this file), then confirm on the
   live city + logs after a push (or via the platform's MCP tools).
 - High-leverage improvements over the starter: bootstrap **both** an ore mine and a metal mine
   quickly (the quest needs both), keep hauling to the Base to **climb levels**, and when a
