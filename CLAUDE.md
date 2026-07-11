@@ -19,11 +19,11 @@ it *now*?" takes seconds. **Install the SDK once, then run the local check on ev
 change.**
 
 ```bash
-pip install "git+https://github.com/oduvan/simcode-sdk-python"   # the simcode SDK (one time)
+pip install "git+https://github.com/oduvan/simcode-robocity-python-tools"   # the test tool + SDK (one time)
 
-python -m simcode.local main.py                 # run your controller vs the REAL engine
-python -m simcode.local main.py --ticks 300     # simulate more ticks
-python -m simcode.local main.py --json          # machine-readable summary
+robocity-sim run main.py                 # run your controller vs the REAL engine
+robocity-sim run main.py --ticks 300     # simulate more ticks
+robocity-sim run main.py --json          # machine-readable summary
 ```
 
 The **first run downloads the engine** from the server (`GET /api/engine/lib`) and
@@ -33,10 +33,10 @@ token. Your `main.py` runs **unchanged**. Read the summary: `handler errors` mus
 if the controller is actually doing something. The exit code is non-zero if any handler
 raised, so you can gate a push on it. Only push after a local run looks right.
 
-> **Check your code with `python -m simcode.local main.py` — NOT `python main.py`.**
+> **Check your code with `robocity-sim run main.py` — NOT `python main.py`.**
 > Running the file directly only *imports* it — it registers your handlers and exits
 > without ever running the engine, so you learn nothing about behaviour (and it can't
-> talk to the live platform). `python -m simcode.local` drives your handlers against the
+> talk to the live platform). `robocity-sim run` drives your handlers against the
 > real engine tick by tick, so you verify **behaviour**, not just that it imports. It's
 > the one reliable way to check a controller.
 
@@ -237,7 +237,7 @@ You never hold a live object — these read **fresh** state each time your handl
 
 - The thing to improve is the **strategy** in `main.py` (and `lib/`). The world is fixed, so
   better code = a better city.
-- **Iterate with the local check:** run `python -m simcode.local main.py` after every edit (it
+- **Iterate with the local check:** run `robocity-sim run main.py` after every edit (it
   runs your controller against the real engine — see the top of this file), then confirm on the
   live city + logs after a push (or via the platform's MCP tools).
 - High-leverage improvements over the starter: bootstrap **both** an ore mine and a metal mine

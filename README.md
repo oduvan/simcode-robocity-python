@@ -32,8 +32,8 @@ engine the server runs, downloaded on demand — so you can check "does this act
 if I push it now?" in seconds:
 
 ```bash
-pip install "git+https://github.com/oduvan/simcode-sdk-python"   # the simcode SDK (one time)
-python -m simcode.local main.py                                  # run vs the real engine
+pip install "git+https://github.com/oduvan/simcode-robocity-python-tools"   # the test tool + SDK (one time)
+robocity-sim run main.py                                         # run vs the real engine
 ```
 
 The first run downloads + caches the engine (no build step, no token); later runs are
