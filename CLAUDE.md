@@ -124,7 +124,7 @@ Each event carries `e.robot_id`. Common events and their extra fields:
 | `arrived` | `position` | a `move_to` flight reached its target. |
 | `blocked` | `reason` | a move/action couldn't complete (e.g. `no_station`). |
 | `construction_started` | `building_id`, `type` | a `world.build(...)` placed a site. |
-| `resource_delivered` | `building_id`, `ore`, `metal` | a `drop` onto a site/store landed. |
+| `resource_delivered` | `building_id`, `item`, `amount` | a `drop` onto a site/store landed (one per item). |
 | `construction_complete` | `building_id`, `type` | a site finished building (now active). |
 | `spot_depleted` | `building_id` | a Mining building's resource spot ran out (no `robot_id`). |
 | `storage_full` | `building_id` | a building's storage is full (no `robot_id`). |
@@ -157,8 +157,8 @@ specific completion events; just react to `idle`. Placing a building is a **worl
 | --- | --- | --- |
 | `r.move_to(x, y)` | **Fly** in a straight line to float `(x, y)`, ignoring terrain/other robots. Spends energy with distance; reveals the map (radius ~5) as it goes — this is how you explore. | `arrived` / `blocked` / `robot_destroyed` |
 | `world.build("mining"\|"storage"\|"flying_station", x, y)` | Place a self-building construction **site** at `(x, y)`. `mining` must be on a live resource spot; the Base isn't buildable. **Not** bound to a robot. | `construction_started` / `blocked` |
-| `r.pick_up(ore=…, metal=…)` | Grab resources from the building **on your cell** into your inventory (up to carry capacity). No args = take everything that fits. Instant. | resolves, then `idle` |
-| `r.drop(ore=…, metal=…)` | Release your inventory into the building/site **on your cell** — supply a build site, or feed the Base/Storage. No args = drop all. Instant. | `resource_delivered` |
+| `r.pick_up(item=None, amount=None)` | Grab resources from the building **on your cell** into your inventory. **No args** = take everything that fits; **item only** = all of that item; **item + amount** = that amount (e.g. `r.pick_up("ore", 6)`). Instant. | resolves, then `idle` |
+| `r.drop(item=None, amount=None)` | Release your inventory into the building/site **on your cell** — supply a build site, or feed the Base/Storage. **No args** = drop everything; **item only** = all of that item; **item + amount** = that amount (e.g. `r.drop("metal", 3)`). Instant. | `resource_delivered` |
 | `r.charge()` | Charge on the **Flying Station on your cell**; holds the robot until the battery is full. | `charge_complete` / `blocked` (`no_station`) |
 | `r.send(target_id, payload)` | Send a message to another robot. | the peer gets a `message` event |
 | `r.cancel()` | Abort the current command; the robot goes free. | `idle` |
@@ -173,7 +173,7 @@ site-placing, or single-step-move commands — robots only fly, haul, and charge
 ### The Base — the quest hub — `b = buildings.base`
 There's one Base; reach it via `buildings.base`. It **isn't built or commanded** — you feed it
 and read its objective:
-- **Feed it:** robots `drop(ore=…, metal=…)` on the Base's cell. Its store is the **quest
+- **Feed it:** robots `drop("ore", …)` / `drop("metal", …)` (or bare `drop()` for all) on the Base's cell. Its store is the **quest
   accumulator**, capped per-resource at the requirement (excess stays on the robot). You
   **cannot `pick_up` from the Base.** It also doubles as a **charging pad** (`r.charge()`).
 - **Read the objective:** `buildings.base.level` (current level, starts at 1) and
@@ -202,13 +202,15 @@ You never hold a live object — these read **fresh** state each time your handl
   `r.id`, `r.type`, `r.position` → **float** `(x, y)`, `r.cell` → the **rounded** `(x, y)` used
   for position-based actions, `r.facing`, `r.state`
   (`idle`/`moving`/`charging`/`hauling`/`blocked`), `r.command` (what it's doing),
-  `r.energy` (battery, 0…cap), `r.inventory` (`.ore`, `.metal`, `.free`, `.capacity`,
-  `.is_full`), `r.here` (`.terrain`, `.spot`, `.building` — what's on its cell),
+  `r.energy` (battery, 0…cap), `r.inventory` (a **`Store`** item map: `r.inventory["ore"]`
+  (missing → `0`), `.items`, `.free`, `.total`, `.capacity`, `.is_full`, `"ore" in r.inventory`),
+  `r.here` (`.terrain`, `.spot`, `.building` — what's on its cell),
   `r.nearest(kind=…|type=…)`, and `r.memory` (a per-robot dict you can write to).
 - **Buildings:** `buildings[id]`, `buildings.all()`, `buildings.of_type(t)`, `buildings.base`,
   `buildings.stations()`. A building handle exposes `.type`
   (`base`/`mining`/`storage`/`flying_station`), `.position`, `.footprint` (w, h),
-  `.status` (`constructing`/`active`), `.storage` (`.ore`/`.metal`/`.capacity`/`.free`),
+  `.status` (`constructing`/`active`), `.storage` (a **`Store`** item map: `b.storage["ore"]`,
+  `.items`, `.free`, `.total`, `.capacity`; also `b.stored("ore")`),
   `.spot` (Mining: `.resource`, `.remaining` — the building auto-mines into its storage),
   `.level` + `.quest` (Base: `.quest.required` / `.quest.progress`, each `{ore, metal}`),
   `.production` (Flying Station: `.active`, `.progress`, `.queued`), `.construction` (while
