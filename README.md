@@ -5,9 +5,13 @@ program that drives the whole robot fleet; **push to the default branch and the 
 hot-reloads** it into your live city.
 
 **The goal:** robots start empty. Pick up materials from the starting **Storage**, build
-**mines** on resource spots, and haul their ore/metal to the **Base** to complete its **quest**
-— each quest cleared **levels the Base up** (your score). Build a **Flying Station** to recharge
-robots and to manufacture more of them. The starter controller does all of this; improve it.
+**mines** on the four raw resources (ore, metal, crystal, carbon), then stand up a **factory
+chain** — smelters/mills/labs that autonomously refine raws → basics → parts → advanced goods —
+and haul the outputs to the **Base** to complete its **quest**. Each quest cleared **levels the
+Base up** (your score), and the quest climbs the tech tree as you level. Build a **Flying
+Station** to recharge robots and to manufacture more of them (robots now cost **parts +
+circuits**). **This starter does none of that** — it only keeps the robots alive and explores the
+map; building the supply chain is your job.
 
 - **Edit `main.py`** to change how your robots behave (pick up, place mines, haul to the Base,
   charge, build robots at a Flying Station).
