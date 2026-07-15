@@ -84,7 +84,7 @@ pick up a kit from the starting Storage → fly to a resource spot →
 
 - **Robots start EMPTY.** There's no free kit — a robot carries nothing until it picks
   something up. Your capital is a **Storage building pre-placed next to the Base**, stocked
-  with **30 ore / 15 metal**; robots `pick_up` from it to get building materials.
+  with **45 ore / 25 metal**; robots `pick_up` from it to get building materials.
 - **The world is endless & continuous.** Robots have **float** `(x, y)` positions and **fly**
   in straight lines from any point to any point, ignoring terrain and each other (no
   pathfinding, multiple robots may share a spot). They interact with a building by their
@@ -105,15 +105,15 @@ tree branches raws → basics → intermediates → advanced:
 
 | Tier | Processor | Input recipe → output | Build cost |
 | --- | --- | --- | --- |
-| T1 | **smelter** | `2 ore → 1 plate` | 8 ore + 4 metal |
-| T1 | **wire_mill** | `2 metal → 1 wire` | 4 ore + 8 metal |
-| T1 | **glassworks** | `2 crystal → 1 glass` | 6 ore + 4 crystal |
-| T1 | **kiln** | `2 carbon → 1 coke` | 6 ore + 4 carbon |
-| T2 | **assembler** | `2 plate + 1 wire → 1 part` | 6 plate + 3 wire |
-| T2 | **electronics_lab** | `2 wire + 1 glass → 1 circuit` | 6 wire + 3 glass |
-| T2 | **alloy_furnace** | `1 plate + 2 coke → 1 alloy` | 4 plate + 4 coke |
-| T3 | **module_assembler** | `2 part + 1 circuit → 1 module` | 4 part + 2 circuit |
-| T3 | **frame_shop** | `1 alloy + 2 plate → 1 frame` | 3 alloy + 2 part |
+| T1 | **smelter** | `2 ore → 1 plate` | 10 ore + 6 metal |
+| T1 | **wire_mill** | `2 metal → 1 wire` | 6 ore + 10 metal |
+| T1 | **glassworks** | `2 crystal → 1 glass` | 10 ore + 6 crystal |
+| T1 | **kiln** | `2 carbon → 1 coke` | 10 ore + 6 carbon |
+| T2 | **assembler** | `2 plate + 1 wire → 1 part` | 8 plate + 6 wire |
+| T2 | **electronics_lab** | `2 wire + 1 glass → 1 circuit` | 8 wire + 6 glass |
+| T2 | **alloy_furnace** | `1 plate + 2 coke → 1 alloy` | 8 plate + 6 coke |
+| T3 | **module_assembler** | `2 part + 1 circuit → 1 module` | 7 part + 5 circuit |
+| T3 | **frame_shop** | `1 alloy + 2 plate → 1 frame` | 7 alloy + 5 part |
 
 Each batch makes **1** output over a few ticks; input/output stores cap at **20**. When a
 processor finishes a batch it fires **`resource_produced`** (go haul the output away); when it
@@ -122,9 +122,9 @@ stalls it fires **`production_blocked`** with `reason` `output_full` (pick the o
 whole tree bootstraps from raws — no deadlock.
 
 **Upgrade buildings** (built structures, not processors) sink advanced goods for better logistics:
-- **deep_mine** (built with `6 part`) — a mine that extracts **2×** as fast into a **2×** buffer.
-- **warehouse** (built with `4 alloy`, 2×2) — a general store like Storage but **much larger** (cap 1500).
-- **charging_tower** (built with `4 circuit`) — a remote **charging pad** out on the frontier.
+- **deep_mine** (built with `6 part + 6 plate`) — a mine that extracts **2×** as fast into a **2×** buffer.
+- **warehouse** (built with `5 alloy + 8 plate`, 2×2) — a general store like Storage but **much larger** (cap 1500).
+- **charging_tower** (built with `5 circuit + 8 wire`) — a remote **charging pad** out on the frontier.
 
 - **Buildings you don't build:** the **Base** (pre-placed, one) — the **quest hub** and a
   **charging pad**. `drop` goods on it to progress the current quest (its store is capped
@@ -140,9 +140,12 @@ whole tree bootstraps from raws — no deadlock.
   `world.build(type, x, y)`, robots **`drop`** resources to fulfil the recipe, and the site
   **self-completes** once supplied — no connect step, no robot labor. You can also **tear a
   building down** with `world.destroy(x, y)` (or `b.destroy()`) to reclaim its materials.
-- **Base building recipes:** Mining `6 ore + 3 metal`, Storage `3 ore`, Flying Station
-  `4 ore + 2 metal`; a Flying Station spends **`2 part + 1 circuit`** from its own store per
+- **Base building recipes:** Mining `9 ore + 5 metal`, Storage `8 ore + 4 metal`, Flying Station
+  `10 ore + 5 metal`; a Flying Station spends **`2 part + 1 circuit`** from its own store per
   robot it builds (the whole chain is required to grow the fleet).
+- **Every build cost exceeds a robot's carry capacity (10), so building is a ≥2-trip haul.** No
+  site can be funded by a single `pick_up` — construction sites **accumulate deliveries across
+  trips**, so plan on flying a load in, `drop`-ing it, and returning for more.
 - **Same map for everyone.** The module fixes the world seed, so *every* city of this type
   starts from the **identical canonical map** — the only variable is your code. It's a contest
   of whose program climbs to the highest Base level.
