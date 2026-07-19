@@ -4,6 +4,14 @@ This starter does one thing on purpose: it keeps the robots alive and flies them
 around to **explore the map**. It does NOT mine, build, haul, or climb Base levels —
 that is for YOU to add.
 
+Note: robots wear out two ways — running the battery to zero mid-flight (avoidable:
+charge in time, handled below) AND simply flying too far. Every robot has a max
+cumulative flight distance (its lifespan, `r.life_remaining` / `r.life_max`); once
+it's flown that far it EXPIRES and is removed (`robot_expired`). This starter does
+NOT replace expired robots, mine, process, repair, or level up the Base — growing and
+replacing the fleet and running the whole economy (robot types, mining, the factory
+tree, mechanic repairs, Base leveling) is YOUR job.
+
 Read CLAUDE.md for the whole game (the goal, the buildings, the full SDK API) and
 grow this controller from here. The idea is simple: `@on.idle` fires whenever a robot
 needs its next order, so decide what the robot should do and issue one command.

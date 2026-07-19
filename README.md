@@ -7,11 +7,15 @@ hot-reloads** it into your live city.
 **The goal:** robots start empty. Pick up materials from the starting **Storage**, build
 **mines** on the four raw resources (ore, metal, crystal, carbon), then stand up a **factory
 chain** — smelters/mills/labs that autonomously refine raws → basics → parts → advanced goods —
-and haul the outputs to the **Base** to complete its **quest**. Each quest cleared **levels the
-Base up** (your score), and the quest climbs the tech tree as you level. Build a **Flying
-Station** to recharge robots and to manufacture more of them (robots now cost **parts +
-circuits**). **This starter does none of that** — it only keeps the robots alive and explores the
-map; building the supply chain is your job.
+and haul the **products** to the **Base** to complete its **quest**. Each quest cleared **levels
+the Base up** (your score) and **unlocks the next tier** of buildings + robot types; the quest is
+product-based (L1→L2 raws, then part → module → module+frame). Build a **Flying Station** to
+recharge robots and manufacture more of them — robots come in **level-gated types**
+(`build_robot(type)`) and cost **raw ore + metal**. Two ongoing pressures make it a *living
+economy*: every robot **expires** after flying a fixed distance (so keep building replacements),
+and **T2/T3 processors wear down** and need a **mechanic** to `repair` them. **This starter does
+none of that** — it only keeps the robots alive and explores the map; building and maintaining the
+whole economy is your job.
 
 - **Edit `main.py`** to change how your robots behave (pick up, place mines, haul to the Base,
   charge, build robots at a Flying Station).
