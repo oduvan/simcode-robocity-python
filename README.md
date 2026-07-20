@@ -17,6 +17,13 @@ and **T2/T3 processors wear down** and need a **mechanic** to `repair` them. **T
 none of that** — it only keeps the robots alive and explores the map; building and maintaining the
 whole economy is your job.
 
+> **Balance lives in the config, not in these docs.** The exact numbers (cargo, speed, lifespan,
+> costs, recipe amounts, store caps, quest quantities, wear/repair rates, energy, start capital)
+> are **tuned per city and change over time**, so don't copy magnitudes out of the docs. Read them
+> live — from handles like `building.recipe`, `buildings.base.unlocks`, `r.life_remaining`,
+> `building.storage.capacity` — or from the MCP tool **`get_world_config`** for the full picture.
+> `CLAUDE.md` describes the mechanics + API; the config is the source of truth for numbers.
+
 - **Edit `main.py`** to change how your robots behave (pick up, place mines, haul to the Base,
   charge, build robots at a Flying Station).
 - **Push** → your city updates in real time at its live page.

@@ -60,6 +60,30 @@ raised, so you can gate a push on it. Only push after a local run looks right.
 
 ## The game you're playing (Robot City Builder)
 
+### ⚖️ Balance lives in the config — read it, don't hardcode
+
+This doc describes **mechanics, roles, and the API** — deliberately **without balance numbers**
+(cargo sizes, speeds, lifespans, costs, recipe amounts, store caps, quest quantities, wear/repair
+rates, energy, start capital). Those are **not** fixed: the same module is **tuned per city** (#35)
+and **rebalanced over time**, so any number written in a doc goes stale. **The config is the source
+of truth; this doc is not.** Always derive balance from the live game:
+
+- **At runtime, read what the game exposes** rather than using constants:
+  - `building.recipe` — a built processor's `.inputs` / `.output` / `.out_amount` / `.ticks`.
+  - `buildings.base.unlocks` — the building + robot types buildable at the current level.
+  - `buildings.base.level` and `buildings.base.quest` (`.required` / `.progress`).
+  - a robot's `.type`, `.life_remaining`, `.life_max`.
+  - a store's capacity: `building.storage.capacity`, `r.inventory.capacity`, etc.
+
+  Prefer these live handles over any hardcoded number.
+- **The authoritative full balance for the city** is its **world config**, surfaced by the MCP
+  tool **`get_world_config`**. It returns `robot_types` (cargo / speed / lifespan / cost /
+  unlock-level per class), per-building `cost` / `build_ticks`, `tunables` (carry capacity, speeds,
+  all store caps, mining, energy, start capital), the `unlocks` ladder, the `maintenance` dials
+  (wear / repair rates), and the `quest` formula. When you (or an assistant) need an **exact**
+  number, read it from there. Numbers can differ **per city** and **change over time** — so never
+  copy a magnitude out of this doc; read it from the config.
+
 Goal of the reference module: **raise the Base's level**. The Base sets a **quest** and each
 quest cleared **levels the Base up** to a harder one — endlessly. Your **highest Base level is
 your score.** Leveling is **product-based**, and each level **unlocks the next tier** of
@@ -67,16 +91,18 @@ buildings + robot types:
 
 | Base level | Quest to reach the next level | Unlocks at this level |
 | --- | --- | --- |
-| **L1** (start) | **100 ore + 60 metal** (raws — the bootstrap step) | Mining, Storage, Flying Station, **builder** robots, T1 processors (smelter/wire_mill/glassworks/kiln) |
-| **L2** | **120 part** (a T2 product) | T2 processors (assembler/electronics_lab/alloy_furnace), **hauler**, **scout**, **mechanic** |
-| **L3** | **60 module** (a T3 product) | T3 processors (module_assembler/frame_shop) |
-| **L4+** | **module + frame**, scaling ×(1+(L−1)/4) — at L4 that's **70 module + 52 frame** | upgrade buildings (deep_mine/warehouse/charging_tower), **heavy_hauler**, **ranger** |
+| **L1** (start) | **raw ore + metal** (the bootstrap step — the only raw quest) | Mining, Storage, Flying Station, **builder** robots, T1 processors (smelter/wire_mill/glassworks/kiln) |
+| **L2** | a **T2 product** (`part`) | T2 processors (assembler/electronics_lab/alloy_furnace), **hauler**, **scout**, **mechanic** |
+| **L3** | a **T3 product** (`module`) | T3 processors (module_assembler/frame_shop) |
+| **L4+** | **module + frame**, the amount climbing with level | upgrade buildings (deep_mine/warehouse/charging_tower), **heavy_hauler**, **ranger** |
 
 The **first** level-up (L1→L2) takes **raw materials only** — so you reach L2 and unlock T2 +
 the new robot types **before** you need a product chain. From **L2→L3 onward the quests demand
 products**, so all progression past the start is about standing up and scaling the factory tree.
 Building or building-a-robot of a **not-yet-unlocked** type is **rejected** with a
-`level_required` reason — read `buildings.base.unlocks` to see what's currently buildable.
+`level_required` reason — read `buildings.base.unlocks` to see what's currently buildable. (The
+exact quest quantities and how they scale come from the config / `get_world_config` — read them,
+don't assume.)
 
 Two new pressures make it a *living* economy — the fleet and the factories both **decay**, so you
 never set-and-forget:
@@ -85,23 +111,27 @@ never set-and-forget:
   distance**; once it's flown that far it is **removed from the map** (`robot_expired`). This is
   *separate* from energy death (`robot_destroyed`, which charging avoids) — expiry is inevitable
   end-of-life. So the fleet is always aging out and you must **build replacements**. Higher robot
-  types live longer (see the type table below).
-- **T2/T3 processors wear out.** Producing batches drains a processor's **condition** (100→0);
-  productivity slows below 50 and **stops at 0**. A **mechanic** robot carrying **metal** flies to
-  the worn building and runs `repair()` to restore it. (Mining and T1 processors never wear.)
+  types live longer (read `r.life_max` / the config for the actual figures).
+- **T2/T3 processors wear out.** Producing batches drains a processor's **condition** (full →
+  empty); productivity slows past the halfway mark and **stops when it hits empty**. A **mechanic**
+  robot carrying **metal** flies to the worn building and runs `repair()` to restore it. (Mining
+  and T1 processors never wear.)
 
-**Robot types** — chosen at build time via `build_robot(type, n)`, unlocked by Base level:
+**Robot types** — chosen at build time via `build_robot(type, n)`, unlocked by Base level. Each
+class differs in **cargo / speed / lifespan / cost** — read the actual figures from
+`get_world_config`'s `robot_types` (or a live robot's handles), not from here:
 
-| Type | Unlock | Cargo | Speed | Lifespan (max flight dist) | Cost (ore/metal) | Role |
-| --- | --- | --- | --- | --- | --- | --- |
-| **builder** | L1 | 10 | 3 | 4000 | 12 / 6 | generalist — the starting fleet; places & supplies sites |
-| **hauler** | L2 | 20 | 2 (slow) | 3500 | 18 / 10 | logistics — big loads |
-| **scout** | L2 | 4 | 5 (fast) | 8000 | 10 / 8 | exploration — far, cheap, low cargo |
-| **mechanic** | L2 | 10 (carries metal) | 3 | 5000 | 14 / 10 | building maintenance (`repair`) |
-| **heavy_hauler** | L4 | 30 | 2 | 7000 | 30 / 18 | advanced logistics |
-| **ranger** | L4 | 6 | 5 | 15000 | 20 / 16 | advanced explorer, long-lived |
+| Type | Unlock | Role |
+| --- | --- | --- |
+| **builder** | L1 | generalist — the starting fleet; places & supplies sites |
+| **hauler** | L2 | logistics — big loads, slow |
+| **scout** | L2 | exploration — fast, far, low cargo, cheap |
+| **mechanic** | L2 | building maintenance (`repair`); carries metal |
+| **heavy_hauler** | L4 | advanced logistics — largest loads |
+| **ranger** | L4 | advanced explorer — fast and long-lived |
 
-Robots cost **raw ore + metal** (per type), spent from a Flying Station's own store.
+Robots cost **raw ore + metal** (per type — the amount is in the config), spent from a Flying
+Station's own store.
 
 > **This starter does NOT play the game.** It only keeps the robots alive and flies them
 > around to explore the map. Building the winning loop below is **your** job — that's the point
@@ -121,7 +151,8 @@ pick up a kit from the starting Storage → fly to a resource spot →
 
 - **Robots start EMPTY.** There's no free kit — a robot carries nothing until it picks
   something up. Your capital is a **Storage building pre-placed next to the Base**, stocked
-  with **45 ore / 25 metal**; robots `pick_up` from it to get building materials.
+  with a starting supply of **ore + metal** (the amount is set by the config); robots `pick_up`
+  from it to get building materials.
 - **The world is endless & continuous.** Robots have **float** `(x, y)` positions and **fly**
   in straight lines from any point to any point, ignoring terrain and each other (no
   pathfinding, multiple robots may share a spot). They interact with a building by their
@@ -140,34 +171,40 @@ Higher-tier goods come from **autonomous processor buildings**: each has an **in
 it converts input→output on its own over time. **Robots never process — they only haul.** The
 tree branches raws → basics → intermediates → advanced:
 
-| Tier | Processor | Input recipe → output | Build cost | Wears? |
-| --- | --- | --- | --- | --- |
-| T1 | **smelter** | `2 ore → 1 plate` | 50 ore + 30 metal | no |
-| T1 | **wire_mill** | `2 metal → 1 wire` | 30 ore + 50 metal | no |
-| T1 | **glassworks** | `2 crystal → 1 glass` | 50 ore + 30 crystal | no |
-| T1 | **kiln** | `2 carbon → 1 coke` | 50 ore + 30 carbon | no |
-| T2 | **assembler** | `2 plate + 1 wire → 1 part` | 40 plate + 30 wire | **yes (−1/batch)** |
-| T2 | **electronics_lab** | `2 wire + 1 glass → 1 circuit` | 40 wire + 30 glass | **yes (−1/batch)** |
-| T2 | **alloy_furnace** | `1 plate + 2 coke → 1 alloy` | 40 plate + 30 coke | **yes (−1/batch)** |
-| T3 | **module_assembler** | `2 part + 1 circuit → 1 module` | 35 part + 25 circuit | **yes (−2/batch)** |
-| T3 | **frame_shop** | `1 alloy + 2 plate → 1 frame` | 35 alloy + 25 part | **yes (−2/batch)** |
+| Tier | Processor | Refines (item flow) | Wears? |
+| --- | --- | --- | --- |
+| T1 | **smelter** | `ore → plate` | no |
+| T1 | **wire_mill** | `metal → wire` | no |
+| T1 | **glassworks** | `crystal → glass` | no |
+| T1 | **kiln** | `carbon → coke` | no |
+| T2 | **assembler** | `plate + wire → part` | **yes** |
+| T2 | **electronics_lab** | `wire + glass → circuit` | **yes** |
+| T2 | **alloy_furnace** | `plate + coke → alloy` | **yes** |
+| T3 | **module_assembler** | `part + circuit → module` | **yes** |
+| T3 | **frame_shop** | `alloy + plate → frame` | **yes** |
 
-Each batch makes **1** output over a few ticks; input/output stores cap at **100** each (so a
-processor accumulates real stock between hauls). When a processor finishes a batch it fires
-**`resource_produced`** (go haul the output away); when it stalls it fires **`production_blocked`**
-with `reason` `output_full` (pick the output up) or `input_short` (haul more input in). Build
-costs always use tiers **below** the output, so the whole tree bootstraps from raws — no deadlock.
+The table shows only the **item flow** (which inputs a processor turns into which output) — the
+exact input/output **amounts**, batch **ticks**, and **build cost** are balance, so read them from
+`building.recipe` and `get_world_config`, not here. Each batch makes its output over a few ticks;
+input/output stores have a **fixed cap** (in the config), so a processor accumulates real stock
+between hauls. When a processor finishes a batch it fires **`resource_produced`** (go haul the
+output away); when it stalls it fires **`production_blocked`** with `reason` `output_full` (pick the
+output up) or `input_short` (haul more input in). A building's cost is always paid in tiers **below**
+its output, so the whole tree bootstraps from raws — no deadlock.
 
-**Wear (T2/T3 only).** The T2/T3 processors have a **condition** meter (100→0) that a batch
-drains (−1 for T2, −2 for T3). At condition ≥ 50 they run full speed; below 50 each batch takes
-longer; at **0 they stop producing entirely**. Keep them serviced with a **mechanic** (see the
+**Wear (T2/T3 only).** The T2/T3 processors have a **condition** meter that each batch drains
+(from full toward empty). Above the halfway mark they run full speed; below it each batch takes
+longer; at **empty they stop producing entirely**. Keep them serviced with a **mechanic** (see the
 `repair` command). Mining and the T1 processors **never wear**, and the mechanic unlocks at L2
-alongside T2, so nothing can decay before you can fix it.
+alongside T2, so nothing can decay before you can fix it. (Wear-per-batch and repair rates are
+config `maintenance` dials — read them, don't assume.)
 
 **Upgrade buildings** (built structures, not processors) sink advanced goods for better logistics:
-- **deep_mine** (built with `30 part + 30 plate`) — a mine that extracts **2×** as fast into a **2×** buffer.
-- **warehouse** (built with `25 alloy + 40 plate`, 2×2) — a general store like Storage but **much larger**.
-- **charging_tower** (built with `25 circuit + 40 wire`) — a remote **charging pad** out on the frontier.
+- **deep_mine** (built from parts + plate) — a mine that extracts **faster into a larger buffer** than plain Mining.
+- **warehouse** (built from alloy + plate, 2×2) — a general store like Storage but **much larger**.
+- **charging_tower** (built from circuit + wire) — a remote **charging pad** out on the frontier.
+
+(Their build costs are in the config — the point is only that they consume **advanced** goods.)
 
 - **Buildings you don't build:** the **Base** (pre-placed, one) — the **quest hub** and a
   **charging pad**. `drop` goods on it to progress the current quest (its store is capped
@@ -183,12 +220,12 @@ alongside T2, so nothing can decay before you can fix it.
   `world.build(type, x, y)`, robots **`drop`** resources to fulfil the recipe, and the site
   **self-completes** once supplied — no connect step, no robot labor. You can also **tear a
   building down** with `world.destroy(x, y)` (or `b.destroy()`) to reclaim its materials.
-- **Base building recipes:** Mining `15 ore` (**ore-only** now — metal spots are precious, so raw
-  extractors never cost metal), Storage `8 ore + 4 metal`, Flying Station `10 ore + 5 metal`; a
-  Flying Station spends **raw ore + metal** from its own store per robot it builds — the amount
-  depends on the **type** (builder 12/6, hauler 18/10, scout 10/8, mechanic 14/10, heavy_hauler
-  30/18, ranger 20/16). So growing the fleet is a raw-materials sink, not a product sink.
-- **Every build cost exceeds a robot's carry capacity (10), so building is a ≥2-trip haul.** No
+- **Base building recipes:** Mining is **ore-only** (metal spots are precious, so raw extractors
+  never cost metal); Storage and Flying Station cost **ore + metal**; a Flying Station spends **raw
+  ore + metal** from its own store per robot it builds — the amount depends on the **type**. So
+  growing the fleet is a raw-materials sink, not a product sink. (All the actual amounts live in the
+  config — read `get_world_config` for exact build costs and per-type robot costs.)
+- **Every build cost exceeds a robot's carry capacity, so building is a ≥2-trip haul.** No
   site can be funded by a single `pick_up` — construction sites **accumulate deliveries across
   trips**, so plan on flying a load in, `drop`-ing it, and returning for more.
 - **Same map for everyone.** The module fixes the world seed, so *every* city of this type
@@ -219,8 +256,8 @@ Each event carries `e.robot_id`. Common events and their extra fields:
 | `production_blocked` | `building_id`, `reason` | a processor stalled — `reason` is `output_full` (pick its output up) or `input_short` (haul more input in). Fires once per stall, no `robot_id`. |
 | `building_destroyed` | `building_id` | a `world.destroy`'d building finished emptying its recoverable store and was removed (no `robot_id`). |
 | `decommission_started` | `building_id` | a building entered `decommissioning` (its materials are now a recoverable store to haul away; no `robot_id`). |
-| `maintenance_needed` | `building_id` | a T2/T3 processor's **condition dropped below 50** — send a mechanic to `repair` it before it slows/stops (no `robot_id`). |
-| `building_stopped` | `building_id` | a T2/T3 processor's **condition hit 0** — it has **halted** production entirely until repaired (no `robot_id`). |
+| `maintenance_needed` | `building_id` | a T2/T3 processor's **condition dropped below the maintenance threshold** (around half) — send a mechanic to `repair` it before it slows/stops (no `robot_id`). |
+| `building_stopped` | `building_id` | a T2/T3 processor's **condition hit empty** — it has **halted** production entirely until repaired (no `robot_id`). |
 | `repair_complete` | `building_id` | a mechanic's `repair` process ended — the mechanic **ran out of metal** or the building reached **full condition** (no `robot_id`). |
 | `inventory_full` | — | a robot can't carry more. |
 | `robot_produced` | `robot_id` | a **Flying Station** finished a new robot. |
@@ -256,7 +293,7 @@ specific completion events; just react to `idle`. Placing a building is a **worl
 | `r.pick_up(item=None, amount=None)` | Grab resources from the building **on your cell** into your inventory — a Mining/Storage store, a **processor's output**, or a **decommissioning** building's recoverable store. **No args** = take everything that fits; **item only** = all of that item; **item + amount** = that amount (e.g. `r.pick_up("ore", 6)`). Instant. | resolves, then `idle` |
 | `r.drop(item=None, amount=None)` | Release your inventory into the building/site **on your cell** — supply a build site, feed the Base/Storage, or load a **processor's input**. **No args** = drop everything; **item only** = all of that item; **item + amount** = that amount (e.g. `r.drop("metal", 3)`). Instant. | `resource_delivered` |
 | `r.charge()` | Charge on the **Flying Station on your cell**; holds the robot until the battery is full. | `charge_complete` / `blocked` (`no_station`) |
-| `r.repair()` | **Mechanic only.** On a **worn T2/T3 processor** on your cell, start a **repair process** that drains the mechanic's **held metal** into the building's `condition` over time (1 metal/tick → +5 condition/tick, cap 100). Stops when the mechanic runs dry **or** the building hits full. Fetch metal first, fly to the building, then `repair()`. | `repair_complete` / `blocked` |
+| `r.repair()` | **Mechanic only.** On a **worn T2/T3 processor** on your cell, start a **repair process** that drains the mechanic's **held metal** into the building's `condition` over time (the metal→condition rate is a config `maintenance` dial). Stops when the mechanic runs dry **or** the building hits full. Fetch metal first, fly to the building, then `repair()`. | `repair_complete` / `blocked` |
 | `r.send(target_id, payload)` | Send a message to another robot. | the peer gets a `message` event |
 | `r.cancel()` | Abort the current command; the robot goes free. | `idle` |
 | `r.log("…")` | Write a line to the city log (for debugging your code). | — |
@@ -294,7 +331,7 @@ Robots are built at a **Flying Station** (not the Base). Build one with
 
 | Call | What it does |
 | --- | --- |
-| `station.build_robot(type="builder", n=1)` | Queue `n` robots of `type` at **this** station. Each consumes that type's **raw ore + metal** cost (builder 12/6, hauler 18/10, scout 10/8, mechanic 14/10, heavy_hauler 30/18, ranger 20/16) from the station's own store and takes time; each finished one spawns **empty** at the station and fires `robot_produced` + its first `idle`. Waits if the store is short. A type not unlocked at the current Base level is rejected (`level_required`). |
+| `station.build_robot(type="builder", n=1)` | Queue `n` robots of `type` at **this** station. Each consumes that type's **raw ore + metal** cost (per-type amount in the config) from the station's own store and takes time; each finished one spawns **empty** at the station and fires `robot_produced` + its first `idle`. Waits if the store is short. A type not unlocked at the current Base level is rejected (`level_required`). |
 | `station.cancel()` | Clear this station's production queue. |
 
 Get a station handle from `buildings.stations()` (or `buildings.of_type("flying_station")`);
@@ -329,8 +366,8 @@ You never hold a live object — these read **fresh** state each time your handl
   `.unlocks` = types buildable at the current level),
   `.production` (Flying Station: `.active`, `.progress`, `.queued`), plus for a **processor**
   `.input` / `.output` (each a **`Store`**) and `.recipe` (`.inputs` map, `.output` item,
-  `.out_amount`, `.ticks`), and for a **T2/T3 processor** `.condition` (100→0 wear meter — below
-  50 it slows, at 0 it stops; a mechanic's `repair` restores it), `.recoverable` (a **`Store`**
+  `.out_amount`, `.ticks`), and for a **T2/T3 processor** `.condition` (a wear meter, full→empty —
+  below the halfway mark it slows, at empty it stops; a mechanic's `repair` restores it), `.recoverable` (a **`Store`**
   while `decommissioning` — pick it empty to remove the building), `.construction` (while building:
   `.required`, `.delivered`, `.progress` — sites self-complete, so **no `connected` field**), and
   `.destroy()` to tear it down.
@@ -363,7 +400,7 @@ You never hold a live object — these read **fresh** state each time your handl
 - High-leverage improvements over the starter:
   - **Bootstrap + climb the chain.** Put mines on **all four raws** (crystal and carbon feed the
     glass/coke branches), then stand up the **processor chain** the current quest tier needs. The
-    quest is **product-based**: L1→L2 is raw ore+metal (100/60), then **L2 wants part**, **L3 wants
+    quest is **product-based**: L1→L2 is raw ore+metal, then **L2 wants part**, **L3 wants
     module**, **L4+ wants module+frame** — so past L1 you must run the assembler/electronics/module
     chains to level up. React to `resource_produced` to keep haulers pulling finished goods, and to
     `production_blocked` to unstall a processor (feed its input or clear its output). When a mine's
@@ -373,8 +410,8 @@ You never hold a live object — these read **fresh** state each time your handl
     Flying Station stocked with **ore + metal** to `build_robot(type, …)` steadily — pick the
     **type** for the job (haulers for bulk logistics, scouts/rangers for far exploration, mechanics
     for maintenance). This is a steady-state cost, not a one-off.
-  - **Keep the factories serviced.** T2/T3 processors **wear** (`condition` 100→0): watch for
-    `maintenance_needed` (below 50) and `building_stopped` (halted at 0), and route a **mechanic**
+  - **Keep the factories serviced.** T2/T3 processors **wear** (`condition` runs full→empty): watch for
+    `maintenance_needed` (below the halfway mark) and `building_stopped` (halted at empty), and route a **mechanic**
     — load it with metal, fly it to the worn building, and `repair()` — before productivity
     collapses. At scale a single processor can't clear a big product quest without repair.
   - **Respect the unlock ladder.** Only what the current Base level **unlocks** is buildable
