@@ -24,31 +24,39 @@ from simcode import on, robots
 DIRS = [(1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1), (0, -1), (1, -1)]
 
 EXPLORE_HOP = 5    # world units to fly per exploration step
-CHARGE_MARGIN = 15  # spare battery to keep on top of the trip home
+CHARGE_MARGIN = 15  # spare battery to keep beyond the planned flight
+
+
+def _dist(a, b):
+    return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
 
 
 @on.idle
 def act(e):
     r = robots[e.robot_id]
+    here = r.position
+    pad = (0, 0)  # the Base sits at the origin and doubles as a charging pad
 
-    # Stay alive: a robot that runs its battery to zero mid-flight is destroyed, so
-    # head back to the Base to recharge WHILE there's still enough energy to reach it.
-    # The Base sits at the origin and doubles as a charging pad. (Distance-aware, not a
-    # fixed threshold — otherwise a robot can wander further than it can fly back from.)
+    # Pick the next explore target: a short hop along a rotating heading. Flying reveals
+    # the map (~5 cells around the robot), so this is how you uncover resource spots.
+    n = r.memory.get("hop", 0) + 1
+    dx, dy = DIRS[n % len(DIRS)]
+    dest = (here[0] + dx * EXPLORE_HOP, here[1] + dy * EXPLORE_HOP)
+
+    # Stay alive — budget the WHOLE ROUND TRIP, not just the way home. A robot that flies
+    # out to `dest` and can't get back to a charging pad dies mid-flight, so before we
+    # commit to the hop we require enough battery for here→dest AND dest→pad plus a margin.
+    # If it can't afford the round trip, divert to the pad and charge now. (The starter
+    # only knows the Base pad; you can also charge on Flying Stations / Charging Towers.)
     if r.energy is not None:
-        x, y = r.position
-        home = (x * x + y * y) ** 0.5  # distance to the Base at (0, 0)
-        if r.energy < home + CHARGE_MARGIN:
-            if r.cell == (0, 0):
+        round_trip = _dist(here, dest) + _dist(dest, pad) + CHARGE_MARGIN
+        if r.energy < round_trip:
+            if r.cell == pad:
                 r.charge()
             else:
-                r.move_to(0, 0)
+                r.move_to(*pad)
             return
 
-    # Otherwise explore: fly a short hop along a rotating heading. Flying reveals the
-    # map (~5 cells around the robot), so this is how you uncover resource spots.
-    n = r.memory.get("hop", 0) + 1
+    # Enough battery for the round trip → commit to the explore hop.
     r.memory["hop"] = n
-    dx, dy = DIRS[n % len(DIRS)]
-    x, y = r.position
-    r.move_to(x + dx * EXPLORE_HOP, y + dy * EXPLORE_HOP)
+    r.move_to(*dest)

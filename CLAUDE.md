@@ -378,6 +378,43 @@ You never hold a live object — these read **fresh** state each time your handl
   lazily as robots fly into the fog. `world.build(type, x, y)` places a construction site.
 - **`store`** — a city-wide dict for your own state that survives across events.
 
+## Common gotchas
+
+Real things that trip up controllers — **behaviour, not magnitudes** (read the numbers from the
+config, per the balance rule above):
+
+1. **A build cost can exceed a robot's inventory.** Funding a construction site can take
+   **several trips** — sites accumulate deliveries across `drop`s. Don't assume one `pick_up`
+   funds a site: read the cost from `building.recipe` and your cap from `r.inventory.capacity`,
+   and keep hauling until the site completes.
+2. **`drop()` deposits only what the target still needs or can hold — the excess stays on the
+   robot.** True for build sites, processor inputs, and the Base. Over-pick, or drop mixed cargo
+   into a store that only wants some of it, and you keep the leftovers — and can loop re-dropping
+   into a full store (looks stuck). `resource_delivered` reports the amount actually **accepted** —
+   trust that, not what you asked to drop.
+3. **`world.build` / `world.destroy` failures are WORLD events with no `robot_id`.** They arrive
+   as a **`blocked`** event (`@on.blocked`) carrying `reason`
+   (`no_spot` / `cell_occupied` / `level_required` / `unknown_type` / `nothing_here` / …) plus the
+   target `type` and `pos`, so you can tell **which** build failed. `world.build(...)` itself
+   **returns nothing**, so watch `on.blocked` rather than checking a return value. (A real spot
+   builds even **under fog** — the world is generated deterministically; a build fails only when
+   there's genuinely no live spot there, the type isn't unlocked, the cell's taken, etc.)
+4. **Guard energy for the whole ROUND TRIP, not just the way out.** A robot can reach a far target
+   and then be too drained to get home, dying mid-flight. Before a long flight require
+   `energy ≥ dist(here→dest) + dist(dest→nearest pad) + margin`. Pads are the **Base**, active
+   **Flying Stations**, and **Charging Towers**. (The starter's explorer already does this.)
+5. **After the early levels the Base stops accepting raws — it wants PRODUCTS.** Read
+   `buildings.base.quest`: once it asks for products, raws pile up in Storage and haulers can
+   freeze holding undroppable cargo unless you've built the processor chain. Cap how much of each
+   item you bank, **harvest processor outputs even before a downstream consumer exists** (a full
+   output store stalls the processor), and always give an idle robot something to do.
+6. **`store` (city-wide) and the world persist across code reloads; module globals reset.** A
+   design change won't retroactively apply if an old decision is cached in `store` (or baked into a
+   building / a robot's `memory`). Detect stale state on load and migrate or rebuild it.
+7. **Local dev tips.** `print(...)` shows in `robocity-sim` stdout — and now so does `r.log(...)`.
+   `store` values must be **JSON-serializable** (a `set` raises a clear error naming the key).
+   `r.id` is a **string** like `"r1"`, not an int.
+
 ## Constraints — read before editing
 
 - **Sandbox.** Your code runs in a restricted sandbox. You may `from simcode import …` and use
