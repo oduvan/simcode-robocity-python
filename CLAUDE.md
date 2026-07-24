@@ -426,6 +426,9 @@ config, per the balance rule above):
   For state that must survive a push, use `store` (city-wide) or `r.memory` (per robot).
 - **Determinism:** don't rely on wall-clock or randomness; the world is seeded and replayable.
 - **The SDK is provided** by the platform — do **not** `pip install simcode` or vendor it.
+- **You cannot reset the world from code.** Resetting a city (wiping it back to tick 0) is a
+  **destructive, owner-only action available ONLY in the web dashboard** (the Reset button) —
+  there is no SDK/MCP reset. Your code influences the world only through robot/world commands.
 
 ## Working in this repo with Claude Code
 
