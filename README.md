@@ -37,8 +37,15 @@ commands + read model), the rules, and the sandbox constraints. It's written so
 ```
 main.py        # your controller (the only thing that runs)
 lib/           # optional helper modules main.py imports
+issues/        # optional — commit a bug/idea folder here and it posts to the forum
 CLAUDE.md      # the SDK + game reference
 ```
+
+> **Hit a bug?** Small stuff → ask your assistant to file it via the MCP forum tools. Something
+> **complicated** (needs a repro + logs), or MCP not working? Commit an `issues/<name>/` folder
+> (a `README.md` write-up + any evidence files); the next push turns it into a forum post. Always
+> **commit to the default branch — no feature branches, no PRs** (the city only deploys from the
+> default branch).
 
 ## Test it locally before you push
 
