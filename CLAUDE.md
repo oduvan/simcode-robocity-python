@@ -315,8 +315,13 @@ and read its objective:
   the requirement (excess stays on the robot). You **cannot `pick_up` from the Base**, and it
   **can't be destroyed.** It also doubles as a **charging pad** (`r.charge()`).
 - **Read the objective:** `buildings.base.level` (current level, starts at 1) and
-  `buildings.base.quest` — `.required` and `.progress`, each an **item map** (progress =
-  min(delivered, required)). Leveling is **product-based**: L1 wants **raw ore+metal**, then every
+  `buildings.base.quest` — `.required` and `.progress` (progress = min(delivered, required)).
+  ⚠️ **These two are plain Python `dict`s (`{item: amount}`), NOT `Store` handles** like
+  `r.inventory` / `building.storage`. So read them as dicts — `q = base.quest.required;
+  q.get("ore", 0)`, `for item, need in q.items(): …` — and do **not** expect `Store` extras
+  (`.items` here is the dict's own method, not a property; there's no `.total`, `.capacity`, or
+  `Store`-style `in`). Don't write one accessor that assumes `.items` is a property for both, or it
+  silently returns nothing for the quest maps. Leveling is **product-based**: L1 wants **raw ore+metal**, then every
   level after wants **products** (L2 part → L3 module → L4+ module+frame), so read the requirement
   each time rather than assuming ore/metal. Deliver it and the Base **levels up** to the next,
   harder quest.
@@ -362,8 +367,9 @@ You never hold a live object — these read **fresh** state each time your handl
   `.status` (`constructing`/`active`/`decommissioning`), `.storage` (a **`Store`** item map:
   `b.storage["ore"]`, `.items`, `.free`, `.total`, `.capacity`; also `b.stored("ore")`),
   `.spot` (Mining: `.resource`, `.remaining` — the building auto-mines into its storage),
-  `.level` + `.quest` + `.unlocks` (Base: `.quest.required` / `.quest.progress`, each an item map;
-  `.unlocks` = types buildable at the current level),
+  `.level` + `.quest` + `.unlocks` (Base: `.quest.required` / `.quest.progress`, each a **plain
+  `dict`** `{item: amount}` — NOT a `Store`, unlike `.storage`/`.inventory`; read with
+  `q.get(item, 0)` / `q.items()`; `.unlocks` = types buildable at the current level),
   `.production` (Flying Station: `.active`, `.progress`, `.queued`), plus for a **processor**
   `.input` / `.output` (each a **`Store`**) and `.recipe` (`.inputs` map, `.output` item,
   `.out_amount`, `.ticks`), and for a **T2/T3 processor** `.condition` (a wear meter, full→empty —
@@ -411,7 +417,27 @@ config, per the balance rule above):
 6. **`store` (city-wide) and the world persist across code reloads; module globals reset.** A
    design change won't retroactively apply if an old decision is cached in `store` (or baked into a
    building / a robot's `memory`). Detect stale state on load and migrate or rebuild it.
-7. **Local dev tips.** `print(...)` shows in `robocity-sim` stdout — and now so does `r.log(...)`.
+7. **Full Storage can dead-lock the fleet — never park a robot holding cargo it can't drop.**
+   Every `@on.idle` handler must issue a command; a robot left parked (charge/wait) while still
+   holding undroppable cargo **never re-enters your task selection** and is stuck for good. Don't
+   make Storage the only drop target: if it's full, fall through to the **next valid sink** —
+   the **Base quest item → a processor input that needs it → any Storage with room**. Storage has
+   a fixed cap, so cap how much of each item you bank, harvest processor outputs even without a
+   downstream consumer, and add Storage/Warehouse capacity *before* you hit the ceiling. A couple
+   of robots frozen on undroppable cargo can stall the **entire** city (no hauling, no base-feeding —
+   only `quest_updated` every tick). (This is the full-Storage flavour of #5 above: same freeze,
+   different trigger.)
+8. **You can dig yourself into an unrecoverable raw shortage.** A Mining building costs a raw
+   (ore); a spot is **finite** and eventually depletes (`spot_depleted`). If stored ore drops
+   below one mine's cost *before* a replacement is up, you can build **neither a mine nor robots**
+   (both cost ore) → a permanent, self-reinforcing deadlock (fleet decays, chain starves, no ore
+   ever returns). Defend proactively: (1) **reserve** ~one mine's worth of each raw nothing else
+   may spend; (2) **replace a mine on `spot.remaining` getting low, not on your stockpile getting
+   low** — so you still have the raw to fund the replacement; (3) keep the fleet's **type mix
+   bounded** (e.g. cap mechanics) so long-lived specialists don't crowd out the haulers you need to
+   recover; (4) last-ditch, `world.destroy` a spent mine to reclaim its ore as a `.recoverable`
+   store — but only helps if a robot then hauls that away.
+9. **Local dev tips.** `print(...)` shows in `robocity-sim` stdout — and now so does `r.log(...)`.
    `store` values must be **JSON-serializable** (a `set` raises a clear error naming the key).
    `r.id` is a **string** like `"r1"`, not an int.
 
