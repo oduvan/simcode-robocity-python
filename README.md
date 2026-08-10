@@ -27,10 +27,10 @@ whole economy is your job.
 - **Edit `main.py`** to change how your robots behave (pick up, place mines, haul to the Base,
   charge, build robots at a Flying Station).
 - **Push** → your city updates in real time at its live page.
-- No setup, no manifest, no dependencies to install — the `simcode` SDK is provided by the
+- No setup, no manifest, no dependencies to install — the `simcode` client library is provided by the
   platform at runtime.
 
-New here? Open **[`CLAUDE.md`](CLAUDE.md)** — it explains the game, the full SDK (events +
+New here? Open **[`CLAUDE.md`](CLAUDE.md)** — it explains the game, the full client library (events +
 commands + read model), the rules, and the sandbox constraints. It's written so
 [Claude Code](https://claude.com/claude-code) can help you write better robot code.
 
@@ -38,7 +38,7 @@ commands + read model), the rules, and the sandbox constraints. It's written so
 main.py        # your controller (the only thing that runs)
 lib/           # optional helper modules main.py imports
 issues/        # optional — commit a bug/idea folder here and it posts to the forum
-CLAUDE.md      # the SDK + game reference
+CLAUDE.md      # the client library + game reference
 ```
 
 > **Hit a bug?** Small stuff → ask your assistant to file it via the MCP forum tools. Something
@@ -54,7 +54,7 @@ engine the server runs, downloaded on demand — so you can check "does this act
 if I push it now?" in seconds:
 
 ```bash
-pip install "git+https://github.com/oduvan/simcode-robocity-python-tools"   # the test tool + SDK (one time)
+pip install "git+https://github.com/oduvan/simcode-robocity-python-tools"   # the test tool + client library (one time)
 robocity-sim run main.py                                         # run vs the real engine
 ```
 

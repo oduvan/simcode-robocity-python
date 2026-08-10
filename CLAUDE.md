@@ -8,18 +8,18 @@ robots immediately act on the new program and you watch the city evolve at your 
 live page.
 
 > This is a **user code repo**, not the platform. You only write the controller. The
-> `simcode` SDK, the world, the rules, and the robots all come from the platform.
+> `simcode` client library, the world, the rules, and the robots all come from the platform.
 
 ## ⚡ Test locally BEFORE you push (do this every iteration)
 
 Pushing to see the result is slow. You can run your `main.py` against the **real game
 engine** on your own machine — it's the *exact* engine the server runs (downloaded on
 demand, **not** a re-implementation) — so checking "does this actually work if I push
-it *now*?" takes seconds. **Install the SDK once, then run the local check on every
+it *now*?" takes seconds. **Install the client library once, then run the local check on every
 change.**
 
 ```bash
-pip install "git+https://github.com/oduvan/simcode-robocity-python-tools"   # the test tool + SDK (one time)
+pip install "git+https://github.com/oduvan/simcode-robocity-python-tools"   # the test tool + client library (one time)
 
 robocity-sim run main.py                 # run your controller vs the REAL engine
 robocity-sim run main.py --ticks 300     # simulate more ticks
@@ -248,7 +248,7 @@ config `maintenance` dials — read them, don't assume.)
   starts from the **identical canonical map** — the only variable is your code. It's a contest
   of whose program climbs to the highest Base level.
 
-## SDK reference
+## Client library reference
 
 ```python
 from simcode import on, robots, buildings, world, store
@@ -308,7 +308,7 @@ specific completion events; just react to `idle`. Placing a building is a **worl
 | `world.destroy(x, y)` | Tear down the building at `(x, y)`: it enters `decommissioning`, its **build cost + current contents** become a **recoverable** store, robots `pick_up` it empty, then it's removed. **Not** bound to a robot; the Base can't be destroyed. Also `b.destroy()` on a handle. | `decommission_started` → `building_destroyed` |
 | `r.pick_up(item=None, amount=None)` | Grab resources from the building **on your cell** into your inventory — a Mining/Storage store, a **processor's output**, or a **decommissioning** building's recoverable store. **No args** = take everything that fits; **item only** = all of that item; **item + amount** = that amount (e.g. `r.pick_up("ore", 6)`). Instant. | resolves, then `idle` |
 | `r.drop(item=None, amount=None)` | Release your inventory into the building/site **on your cell** — supply a build site, feed the Base/Storage, or load a **processor's input**. **No args** = drop everything; **item only** = all of that item; **item + amount** = that amount (e.g. `r.drop("metal", 3)`). Instant. | `resource_delivered` |
-| `r.charge()` | Charge on the **Flying Station on your cell**; holds the robot until the battery is full. | `charge_complete` / `blocked` (`no_station`) |
+| `r.charge()` | Charge on the **charging pad on your cell** — a **Flying Station**, the **Base**, or a **Charging Tower**; holds the robot until the battery is full. | `charge_complete` / `blocked` (`no_station`) |
 | `r.repair()` | **Mechanic only.** On a **worn T2/T3 processor** on your cell, start a **repair process** that drains the mechanic's **held metal** into the building's `condition` over time (the metal→condition rate is a config `maintenance` dial). Stops when the mechanic runs dry **or** the building hits full. Fetch metal first, fly to the building, then `repair()`. | `repair_complete` / `blocked` |
 | `r.send(target_id, payload)` | Send a message to another robot. | the peer gets a `message` event |
 | `r.cancel()` | Abort the current command; the robot goes free. | `idle` |
@@ -467,10 +467,10 @@ config, per the balance rule above):
 - **State:** module-level globals persist while the process runs but **reset on a code reload**.
   For state that must survive a push, use `store` (city-wide) or `r.memory` (per robot).
 - **Determinism:** don't rely on wall-clock or randomness; the world is seeded and replayable.
-- **The SDK is provided** by the platform — do **not** `pip install simcode` or vendor it.
+- **The client library is provided** by the platform — do **not** `pip install simcode` or vendor it.
 - **You cannot reset the world from code.** Resetting a city (wiping it back to tick 0) is a
   **destructive, owner-only action available ONLY in the web dashboard** (the Reset button) —
-  there is no SDK/MCP reset. Your code influences the world only through robot/world commands.
+  there is no code-level or MCP reset. Your code influences the world only through robot/world commands.
 
 ## Working in this repo with Claude Code
 
@@ -556,7 +556,7 @@ something to silently work around. File a `bug` post so it gets fixed or the doc
 
 **After you file, MONITOR for an answer — a post isn't done when you submit it.** Check back with
 `get_forum_post(id)` (or `list_forum_posts`) for a maintainer **reply** or a `resolved` flag, and
-relay the answer to your human. (Only the MCP forum tools can post/read — your robot code / the SDK
+relay the answer to your human. (Only the MCP forum tools can post/read — your robot code / the client library
 cannot touch the forum.)
 
 ### When MCP isn't enough — file from the repo with an `issues/` folder
