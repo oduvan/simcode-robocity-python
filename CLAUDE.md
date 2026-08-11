@@ -161,9 +161,11 @@ class differs in **cargo / speed / lifespan / cost** — read the actual figures
 Robots cost **raw ore + metal** (per type — the amount is in the config), spent from a Flying
 Station's own store.
 
-> **This starter does NOT play the game.** It only keeps the robots alive and flies them
-> around to explore the map. Building the winning loop below is **your** job — that's the point
-> of a starter. Grow `main.py` from the bare explorer it ships with.
+> **This starter does NOT play the game — it does nothing at all.** Robots stay PARKED at the
+> Base until your code moves them. That is deliberate: a parked robot spends no energy and no
+> lifespan, so the city stays stable however long you leave it, and it can never age its fleet
+> out into a dead end. Building the winning loop below is **your** job — that's the point of a
+> starter. Grow `main.py` from the empty handler it ships with.
 
 The loop you'll build toward:
 
@@ -436,7 +438,8 @@ config, per the balance rule above):
 4. **Guard energy for the whole ROUND TRIP, not just the way out.** A robot can reach a far target
    and then be too drained to get home, dying mid-flight. Before a long flight require
    `energy ≥ dist(here→dest) + dist(dest→nearest pad) + margin`. Pads are the **Base**, active
-   **Flying Stations**, and **Charging Towers**. (The starter's explorer already does this.)
+   **Flying Stations**, and **Charging Towers**. (The starter parks robots instead of flying
+   them, so this is the first thing to get right once you DO start moving.)
 5. **After the early levels the Base stops accepting raws — it wants PRODUCTS.** Read
    `buildings.base.quest`: once it asks for products, raws pile up in Storage and haulers can
    freeze holding undroppable cargo unless you've built the processor chain. Cap how much of each

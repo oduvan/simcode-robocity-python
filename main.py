@@ -1,62 +1,77 @@
 """SimCode city controller — a MINIMAL starting point.
 
-This starter does one thing on purpose: it keeps the robots alive and flies them
-around to **explore the map**. It does NOT mine, build, haul, or climb Base levels —
-that is for YOU to add.
+This starter does nothing. That is deliberate, and it is the safest possible
+starting state: your robots stay parked at the Base and wait for orders.
 
-Note: robots wear out two ways — running the battery to zero mid-flight (avoidable:
-charge in time, handled below) AND simply flying too far. Every robot has a max
-cumulative flight distance (its lifespan, `r.life_remaining` / `r.life_max`); once
-it's flown that far it EXPIRES and is removed (`robot_expired`). This starter does
-NOT replace expired robots, mine, process, repair, or level up the Base — growing and
-replacing the fleet and running the whole economy (robot types, mining, the factory
-tree, mechanic repairs, Base leveling) is YOUR job.
+WHY PARKED, AND NOT EXPLORING
 
-Read CLAUDE.md for the whole game (the goal, the buildings, the full client API) and
-grow this controller from here. The idea is simple: `@on.idle` fires whenever a robot
-needs its next order, so decide what the robot should do and issue one command.
+A robot wears out two ways, and only one of them is avoidable:
+
+  * ENERGY — flying drains the battery. Run it to zero mid-flight and the robot is
+    destroyed along with whatever it was carrying. You can avoid this by charging
+    in time (`r.charge()` on a charging pad).
+  * LIFESPAN — every robot also has a maximum CUMULATIVE flight distance
+    (`r.life_remaining` / `r.life_max`). Fly far enough, over any span of time, and
+    it simply expires. Nothing prevents this. The only answer is to build
+    replacements before the fleet ages out.
+
+A robot that never flies spends neither. So a parked city is stable: leave it for a
+day and it is exactly as you left it, ready for your code. A starter that flew
+around would look busier, but it would burn lifespan for nothing and eventually
+leave you with no robots at all — and a city with no robots cannot act, because
+every recovery path is a robot command. That is a real dead end, not a setback.
+
+So: nothing here moves until you make it move.
+
+WHAT TO DO NEXT
+
+`@on.idle` fires whenever a robot is free and needs its next order — and it keeps
+firing every few ticks while the robot stays idle, so a robot is never stranded.
+That is your main loop. Decide what the robot should do, and issue ONE command.
+
+The commands are on the robot handle:
+
+    r.move_to(x, y)     fly in a straight line to a float position (reveals the map)
+    r.pick_up(item, n)  take from the building on the robot's cell
+    r.drop(item, n)     release into the building on the robot's cell
+    r.charge()          refill the battery on a charging pad
+
+and on the world:
+
+    world.build("mining", x, y)   place a self-building construction site
+
+A first step that is genuinely useful: find a resource spot near the Base, put a
+mine on it, and haul what it produces to the Base to raise your level. Read
+CLAUDE.md for the whole game and the full API — the goal, the buildings, the
+supply chain, and what each event carries.
+
+One thing worth knowing before you write the loop: the Base ladder is generated
+from your world's seed, so what a level asks for differs between cities. Read
+`buildings.base.quest.required` and react to it rather than hardcoding items.
 """
 
 from simcode import on, robots
 
-# Compass headings. A robot advances one heading per trip (kept in its memory) so the
-# fleet fans out across the map instead of re-treading a single line into the fog.
-DIRS = [(1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1), (0, -1), (1, -1)]
-
-EXPLORE_HOP = 5    # world units to fly per exploration step
-CHARGE_MARGIN = 15  # spare battery to keep beyond the planned flight
-
-
-def _dist(a, b):
-    return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
-
 
 @on.idle
 def act(e):
-    r = robots[e.robot_id]
-    here = r.position
-    pad = (0, 0)  # the Base sits at the origin and doubles as a charging pad
+    """Called whenever a robot is free. Right now it does nothing on purpose.
 
-    # Pick the next explore target: a short hop along a rotating heading. Flying reveals
-    # the map (~5 cells around the robot), so this is how you uncover resource spots.
-    n = r.memory.get("hop", 0) + 1
-    dx, dy = DIRS[n % len(DIRS)]
-    dest = (here[0] + dx * EXPLORE_HOP, here[1] + dy * EXPLORE_HOP)
+    `e.robot_id` is the robot that needs an order; `robots[e.robot_id]` is its
+    handle. Issuing no command leaves the robot parked — safe, and costing nothing.
 
-    # Stay alive — budget the WHOLE ROUND TRIP, not just the way home. A robot that flies
-    # out to `dest` and can't get back to a charging pad dies mid-flight, so before we
-    # commit to the hop we require enough battery for here→dest AND dest→pad plus a margin.
-    # If it can't afford the round trip, divert to the pad and charge now. (The starter
-    # only knows the Base pad; you can also charge on Flying Stations / Charging Towers.)
-    if r.energy is not None:
-        round_trip = _dist(here, dest) + _dist(dest, pad) + CHARGE_MARGIN
-        if r.energy < round_trip:
-            if r.cell == pad:
-                r.charge()
-            else:
-                r.move_to(*pad)
-            return
+    Replace this with your strategy. For example, to send a robot to a resource
+    spot and mine it:
 
-    # Enough battery for the round trip → commit to the explore hop.
-    r.memory["hop"] = n
-    r.move_to(*dest)
+        r = robots[e.robot_id]
+        spot = r.nearest(kind="ore_spot")
+        if spot and r.cell != tuple(spot):
+            r.move_to(*spot)
+        elif spot:
+            world.build("mining", *spot)
+
+    (That needs `world` imported too — `from simcode import on, robots, world`.)
+    Mind the battery once you start flying: budget the WHOLE round trip, out and
+    back to a charging pad, not just the outbound leg.
+    """
+    return
