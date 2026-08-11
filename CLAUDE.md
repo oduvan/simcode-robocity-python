@@ -102,23 +102,35 @@ of truth; this doc is not.** Always derive balance from the live game:
 
 Goal of the reference module: **raise the Base's level**. The Base sets a **quest** and each
 quest cleared **levels the Base up** to a harder one — endlessly. Your **highest Base level is
-your score.** Leveling is **product-based**, and each level **unlocks the next tier** of
-buildings + robot types:
+your score.** Leveling is **product-based**, and each level **unlocks** more of the tech tree.
 
-| Base level | Quest to reach the next level | Unlocks at this level |
-| --- | --- | --- |
-| **L1** (start) | **raw ore + metal** (the bootstrap step — the only raw quest) | Mining, Storage, Flying Station, **builder** robots, T1 processors (smelter/wire_mill/glassworks/kiln) |
-| **L2** | a **T2 product** (`part`) | T2 processors (assembler/electronics_lab/alloy_furnace), **hauler**, **scout**, **mechanic** |
-| **L3** | a **T3 product** (`module`) | T3 processors (module_assembler/frame_shop) |
-| **L4+** | **module + frame**, the amount climbing with level | upgrade buildings (deep_mine/warehouse/charging_tower), **heavy_hauler**, **ranger** |
+**The ladder is ENDLESS and GENERATED FROM YOUR WORLD'S SEED.** There is no fixed list of levels
+to memorise: your city derives its own, so **another city's ladder is different from yours**, and
+the same seed always reproduces the same one. Two consequences for your code:
 
-The **first** level-up (L1→L2) takes **raw materials only** — so you reach L2 and unlock T2 +
-the new robot types **before** you need a product chain. From **L2→L3 onward the quests demand
-products**, so all progression past the start is about standing up and scaling the factory tree.
-Building or building-a-robot of a **not-yet-unlocked** type is **rejected** with a
-`level_required` reason — read `buildings.base.unlocks` to see what's currently buildable. (The
-exact quest quantities and how they scale come from the config / `get_world_config` — read them,
-don't assume.)
+- **Never hardcode what a level wants.** Read `buildings.base.quest.required` and react to it.
+  A level may ask for raws, T1, T2 or T3 items depending on where you are and which world you got.
+- **Never assume which level unlocks what.** Read `buildings.base.unlocks` — the type that arrived
+  at level 3 in one city may arrive later or earlier in another.
+
+Two things are guaranteed, so you can always make progress:
+
+- **Every level is completable with what you already have.** A level never asks for something only
+  a later level unlocks.
+- **Every level is harder than the one below it** — measured in raw material, so a level wanting
+  20 `module` counts as harder than one wanting 400 `ore`.
+
+**Level 1 is always a raws-only bootstrap** (two of the four raws), so you can score by mining and
+hauling before you have built any chain.
+
+**The next level is a surprise.** Only the level you are working toward is published. The one above
+appears as `buildings.base.next_quest` (`.level`, `.required`, `.unlocks`) once you pass ~75% of
+the current level — use it to start stockpiling early. While it is absent, the next level is simply
+not revealed yet; it never means you have run out of levels, because you cannot.
+
+Building — or building a robot — of a **not-yet-unlocked** type is **rejected** with a
+`level_required` reason.
+
 
 Two new pressures make it a *living* economy — the fleet and the factories both **decay**, so you
 never set-and-forget:
@@ -441,8 +453,8 @@ config, per the balance rule above):
    a fixed cap, so cap how much of each item you bank, harvest processor outputs even without a
    downstream consumer, and add Storage/Warehouse capacity *before* you hit the ceiling. A couple
    of robots frozen on undroppable cargo can stall the **entire** city (no hauling, no base-feeding —
-   only `quest_updated` every tick). (This is the full-Storage flavour of #5 above: same freeze,
-   different trigger.)
+   the activity log simply goes **quiet**). (This is the full-Storage flavour of #5 above: same
+   freeze, different trigger.)
 8. **You can dig yourself into an unrecoverable raw shortage.** A Mining building costs a raw
    (ore); a spot is **finite** and eventually depletes (`spot_depleted`). If stored ore drops
    below one mine's cost *before* a replacement is up, you can build **neither a mine nor robots**
@@ -486,9 +498,9 @@ config, per the balance rule above):
 - High-leverage improvements over the starter:
   - **Bootstrap + climb the chain.** Put mines on **all four raws** (crystal and carbon feed the
     glass/coke branches), then stand up the **processor chain** the current quest tier needs. The
-    quest is **product-based**: L1→L2 is raw ore+metal, then **L2 wants part**, **L3 wants
-    module**, **L4+ wants module+frame** — so past L1 you must run the assembler/electronics/module
-    chains to level up. React to `resource_produced` to keep haulers pulling finished goods, and to
+    quest is **product-based and seed-generated** — read `buildings.base.quest.required` rather
+    than assuming, since your world's ladder is its own. Past L1 it will want processed goods, so
+    you must run the chains to level up. React to `resource_produced` to keep haulers pulling finished goods, and to
     `production_blocked` to unstall a processor (feed its input or clear its output). When a mine's
     spot runs dry (`spot_depleted`) build a **replacement** so the chain never starves.
   - **Replace the aging fleet.** Every robot **expires** by cumulative flight distance
