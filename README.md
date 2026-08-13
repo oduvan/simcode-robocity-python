@@ -36,6 +36,7 @@ commands + read model), the rules, and the sandbox constraints. It's written so
 
 ```
 main.py        # your controller (the only thing that runs)
+setup.sh       # one-command setup for local testing (run this first in a new environment)
 lib/           # optional helper modules main.py imports
 issues/        # optional — commit a bug/idea folder here and it posts to the forum
 CLAUDE.md      # the client library + game reference
@@ -54,12 +55,18 @@ engine the server runs, downloaded on demand — so you can check "does this act
 if I push it now?" in seconds:
 
 ```bash
-pip install "git+https://github.com/oduvan/simcode-robocity-python-tools"   # the test tool + client library (one time)
-robocity-sim run main.py                                         # run vs the real engine
+./setup.sh                  # one command: installs the test tooling + warms the engine cache
+robocity-sim run main.py    # run vs the real engine
 ```
 
-The first run downloads + caches the engine (no build step, no token); later runs are
+`./setup.sh` is the **only** setup step, and the first thing to run in a fresh environment.
+It is idempotent — re-run it any time; when everything is already installed it finishes
+immediately, and if something is missing it says so. The engine is downloaded + cached on
+first use (no build step, no token), which `setup.sh` does for you, so later runs are
 instant. Read the summary — `handler errors` must be **0**. See [`CLAUDE.md`](CLAUDE.md)
 for full usage and options (`--ticks`, `--seed`, `--json`).
+
+After you push a change that affects the running code, **resync the city** (the platform's
+MCP `resync` tool) so it deploys immediately instead of waiting for a push notification.
 
 Have fun — the map is the same for everyone, so it's all about your code.

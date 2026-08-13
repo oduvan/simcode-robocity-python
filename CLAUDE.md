@@ -15,12 +15,32 @@ live page.
 Pushing to see the result is slow. You can run your `main.py` against the **real game
 engine** on your own machine — it's the *exact* engine the server runs (downloaded on
 demand, **not** a re-implementation) — so checking "does this actually work if I push
-it *now*?" takes seconds. **Install the client library once, then run the local check on every
-change.**
+it *now*?" takes seconds.
+
+**Step 1 — in a new environment, run the one-command setup. This is the FIRST thing to
+run; nothing else is needed before it.**
 
 ```bash
-pip install "git+https://github.com/oduvan/simcode-robocity-python-tools"   # the test tool + client library (one time)
+./setup.sh                               # installs the test tooling + warms the engine cache
+```
 
+`./setup.sh` installs the local test tooling (the `simcode` client library + the
+`robocity-sim` CLI) if it isn't installed yet, then runs a 1-tick local test that
+downloads and caches the game engine — so a real run right afterwards is instant. It is
+**idempotent and fast to re-run**: start every session with it without wondering whether
+it already ran; when everything is in place it skips the install and returns in a moment.
+If setup can't complete, it stops and names what was missing. It is **local testing only**
+— it never deploys anything to your city (deploying is commit + push + resync, below).
+
+> If pip puts `robocity-sim` somewhere that isn't on your `PATH` (typically `~/.local/bin`),
+> setup.sh says so and prints the one `export PATH=…` line to paste into the shell you're in
+> right now. It also adds that same line **once** to the shell startup files you already have
+> (`~/.profile`, `~/.bashrc`, `~/.zshrc`) so a *new* shell needs no step at all — it names
+> every file it changed, and those files are the only thing it writes outside this repo.
+
+**Step 2 — after every edit, run the local check:**
+
+```bash
 robocity-sim run main.py                 # run your controller vs the REAL engine
 robocity-sim run main.py --ticks 300     # simulate more ticks
 robocity-sim run main.py --json          # machine-readable summary
@@ -42,8 +62,11 @@ lists every unhandled exception since your last release, grouped by `type` + `fi
 with a sample traceback and the log lines leading up to it. `handler errors` in a local
 `run` catches most of these before you push; `inspect --errors` catches what only happens live.
 
-The **first run downloads the engine** from the server (`GET /api/engine/lib`) and
-**caches** it under `~/.cache/simcode/`, so later runs are instant — no build step, no
+**Background (what `./setup.sh` does for you — you don't have to run these by hand).** The
+tooling is one package, `pip install "git+https://github.com/oduvan/simcode-robocity-python-tools"`,
+which provides both the `simcode` client library and the `robocity-sim` CLI. The **first run
+downloads the engine** from the server (`GET /api/engine/lib`) and **caches** it under
+`~/.cache/simcode/`, so later runs are instant — no build step, no
 token. Your `main.py` runs **unchanged**. Read the summary: `handler errors` must be
 **0**, `robots destroyed` should be **0**, and `buildings` / `map revealed` should grow
 if the controller is actually doing something. The exit code is non-zero if any handler
@@ -483,6 +506,8 @@ config, per the balance rule above):
   For state that must survive a push, use `store` (city-wide) or `r.memory` (per robot).
 - **Determinism:** don't rely on wall-clock or randomness; the world is seeded and replayable.
 - **The client library is provided** by the platform — do **not** `pip install simcode` or vendor it.
+  (`./setup.sh` installs the *local test tooling*, which carries its own copy for offline runs;
+  that's separate from what your city runs on the server.)
 - **You cannot reset the world from code.** Resetting a city (wiping it back to tick 0) is a
   **destructive, owner-only action available ONLY in the web dashboard** (the Reset button) —
   there is no code-level or MCP reset. Your code influences the world only through robot/world commands.
@@ -492,7 +517,16 @@ config, per the balance rule above):
 - **Commit straight to the default branch — never a feature branch, never a PR.** The city only
   hot-reloads from this repo's **default branch** on push; work parked on another branch or an
   unmerged PR **never deploys**. So the loop is: edit `main.py` → run the local check → commit to
-  the default branch → push. Don't create branches, don't open PRs.
+  the default branch → push → **resync**. Don't create branches, don't open PRs.
+- **After the push completes, trigger a resync for this city** — with **the platform's MCP
+  `resync` tool for your city**. It is the last step of the loop above, not an optional extra.
+  Why: a push is normally delivered to the platform by a notification from GitHub, but that
+  delivery is **not guaranteed**, and the automatic catch-up that recovers a missed one only runs
+  **periodically** — so without a resync you can push and then wait, with no clear sign whether
+  anything happened. A resync makes the new code take effect **immediately**. Do it only for
+  changes that affect the **running code** (`main.py`, `lib/`) — a docs-only or `issues/`-only
+  commit doesn't need one. (Resync just re-pulls this repo and reloads the code; it never resets
+  your world.)
 - The thing to improve is the **strategy** in `main.py` (and `lib/`). The world is fixed, so
   better code = a better city.
 - **Iterate with the local check:** run `robocity-sim run main.py` after every edit (it
