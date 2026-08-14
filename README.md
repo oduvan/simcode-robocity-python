@@ -56,15 +56,19 @@ if I push it now?" in seconds:
 
 ```bash
 ./setup.sh                  # one command: installs the test tooling + warms the engine cache
-robocity-sim run main.py    # run vs the real engine
+robocity-sim run main.py    # run vs the real engine, on YOUR city's world
+robocity-sim check main.py  # would a deploy accept this code?
 ```
 
 `./setup.sh` is the **only** setup step, and the first thing to run in a fresh environment.
 It is idempotent — re-run it any time; when everything is already installed it finishes
 immediately, and if something is missing it says so. The engine is downloaded + cached on
 first use (no build step, no token), which `setup.sh` does for you, so later runs are
-instant. Read the summary — `handler errors` must be **0**. See [`CLAUDE.md`](CLAUDE.md)
-for full usage and options (`--ticks`, `--seed`, `--json`).
+instant. Read the summary — `handler errors` must be **0**, and so should `robots destroyed`
+(`robots expired` is normal end of life, not a fault). A run uses **your city's**
+world and stops rather than substituting another one; before your city exists, pass
+`--canonical`. See [`CLAUDE.md`](CLAUDE.md) for full usage and options (`--ticks`,
+`--seed`, `--canonical`, `--json`).
 
 After you push a change that affects the running code, **resync the city** (the platform's
 MCP `resync` tool) so it deploys immediately instead of waiting for a push notification.

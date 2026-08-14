@@ -206,15 +206,18 @@ fi
 # --- 3. the engine + a real 1-tick test -----------------------------------
 # The engine is downloaded from the server on first use and cached under
 # ~/.cache/simcode/, so this both warms the cache and verifies the install.
+# --canonical on purpose: setup runs BEFORE this repo is linked to a city, and a
+# run refuses to guess a world it cannot resolve (it will not silently substitute
+# one). Your real runs, from a linked repo, use your city's world with no flag.
 say "engine:   running a 1-tick local test to warm the engine cache..."
-if robocity-sim run main.py --ticks 1 >/dev/null 2>&1; then
+if robocity-sim run main.py --canonical --ticks 1 >/dev/null 2>&1; then
 	say "engine:   ready — local runs start instantly from now on"
 else
 	say "engine:   WARNING: the warm-up run did not complete."
 	say "          Setup itself is done; this usually means the server is"
 	say "          unreachable (offline), and the engine will be downloaded on"
 	say "          your first real run. To see the actual error, run it directly:"
-	say "              $invoke run main.py --ticks 1"
+	say "              $invoke run main.py --canonical --ticks 1"
 fi
 
 # --- 4. what to do next ---------------------------------------------------
