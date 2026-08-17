@@ -160,6 +160,14 @@ the same seed always reproduces the same one. Two consequences for your code:
 - **Never assume which level unlocks what.** Read `buildings.base.unlocks` — the type that arrived
   at level 3 in one city may arrive later or earlier in another.
 
+> ### ⚠️ "Do I already have one?" must count SITES, not just finished buildings
+> A construction site **is** a building — it is in `buildings.all()` / `buildings.of_type(t)`
+> already, with `.status == "constructing"`. So filtering to `status == "active"` for an
+> "do I have one of these yet?" check answers **no** while yours is still being built, and you
+> order a second, then a third. Count the site too, or you will fund three of everything and
+> stall them all by spreading your materials.
+
+
 Two things are guaranteed, so you can always make progress:
 
 - **Every level is completable with what you already have.** A level never asks for something only
@@ -272,8 +280,10 @@ its output, so the whole tree bootstraps from raws — no deadlock.
 **Wear (T2/T3 only).** The T2/T3 processors have a **condition** meter that each batch drains
 (from full toward empty). Above the halfway mark they run full speed; below it each batch takes
 longer; at **empty they stop producing entirely**. Keep them serviced with a **mechanic** (see the
-`repair` command). Mining and the T1 processors **never wear**, and the mechanic unlocks at L2
-alongside T2, so nothing can decay before you can fix it. (Wear-per-batch and repair rates are
+`repair` command). Mining and the T1 processors **never wear**, and the **mechanic is
+guaranteed to unlock no later than the first building that can wear**, so nothing can decay
+before you can fix it — but the ladder is generated per world, so read
+`buildings.base.unlocks` for *which level* that is rather than assuming a number. (Wear-per-batch and repair rates are
 config `maintenance` dials — read them, don't assume.)
 
 **Upgrade buildings** (built structures, not processors) sink advanced goods for better logistics:
@@ -342,7 +352,7 @@ Each event carries `e.robot_id`. Common events and their extra fields:
 | `robot_expired` | `position`, `reason` | a robot **exceeded its flight lifespan** (max cumulative distance) and was removed — cargo lost. **Separate** from `robot_destroyed`, and **inevitable** end-of-life: build replacements. |
 | `charge_complete` | — | a robot on a charging pad finished charging (battery full). |
 | `quest_updated` | `level`, `requirements{item:qty}` | the Base's current quest — at start and after each level-up. **Leveling is product-based**: L1 wants raw ore+metal, then L2+ wants products (part → module → module+frame). (`building_id`, no `robot_id`.) |
-| `base_level_up` | `level`, `quest{item:qty}`, `unlocks` | the Base cleared its quest and **leveled up** — carries the next quest's item map **and the set of buildings/robot types now unlocked** at the new level (`building_id`, no `robot_id`). |
+| `base_level_up` | `level`, `quest{item:qty}`, `unlocks` | the Base cleared its quest and **leveled up** — carries the next quest's item map and **only what THIS level ADDED** (`building_id`, no `robot_id`). ⚠️ It is a **delta, not the full set**: cache it as your buildable list and you silently lose every earlier level, then quietly stop building mines. Read `buildings.base.unlocks` — that one is cumulative. |
 | `message` | `from`, `payload` | another robot messaged this one. |
 
 The cleanest controller is built around **`idle`**: it fires exactly when a robot is free,
