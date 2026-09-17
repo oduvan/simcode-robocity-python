@@ -552,15 +552,20 @@ config, per the balance rule above):
   hot-reloads from this repo's **default branch** on push; work parked on another branch or an
   unmerged PR **never deploys**. So the loop is: edit `main.py` → run the local check → commit to
   the default branch → push → **resync**. Don't create branches, don't open PRs.
-- **After the push completes, trigger a resync for this city** — with **the platform's MCP
-  `resync` tool for your city**. It is the last step of the loop above, not an optional extra.
-  Why: a push is normally delivered to the platform by a notification from GitHub, but that
-  delivery is **not guaranteed**, and the automatic catch-up that recovers a missed one only runs
-  **periodically** — so without a resync you can push and then wait, with no clear sign whether
-  anything happened. A resync makes the new code take effect **immediately**. Do it only for
-  changes that affect the **running code** (`main.py`, `lib/`) — a docs-only or `issues/`-only
-  commit doesn't need one. (Resync just re-pulls this repo and reloads the code; it never resets
-  your world.)
+- **After the push completes, check that it landed.** The push alone usually does it:
+  GitHub notifies the platform, which pulls, validates and hot-reloads. But that delivery
+  is **not guaranteed**, and the catch-up that recovers a missed one only runs
+  **periodically** — so confirm rather than assume. Either way works:
+  - **With the platform's MCP tools:** call `resync` for your city. It re-pulls and reloads
+    **immediately**, so there is nothing left to wait for.
+  - **Without them** — a session with no platform MCP connected, which is common — run
+    `robocity-sim inspect`. No token, no MCP. It reports the **release** your city is
+    actually running: once that is your new commit, the push has landed and you are done.
+    If it still shows the old one after a minute, push again, or press **Resync** on the
+    city page. A missing MCP tool is not a blocked deploy — do not stop on it.
+  Only changes to the **running code** (`main.py`, `lib/`) need any of this; a docs-only or
+  `issues/`-only commit does not. (Resync just re-pulls this repo and reloads the code; it
+  never resets your world.)
 - The thing to improve is the **strategy** in `main.py` (and `lib/`). The world is fixed, so
   better code = a better city.
 - **Iterate with the local check:** run `robocity-sim run main.py` after every edit (it
